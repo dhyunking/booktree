@@ -286,9 +286,11 @@ async function apiFetch(params){
   return res.json();
 }
 
-async function apiPost(body){
+// POST 대신 GET으로 데이터 저장 (CORS 문제 해결)
+async function apiAction(params){
   if(!API_URL)throw new Error('API URL 미설정');
-  const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const url=API_URL+'?'+new URLSearchParams(params);
+  const res=await fetch(url);
   return res.json();
 }
 
@@ -395,12 +397,15 @@ async function saveStudent(){
   const s={id:editStudentId||uid(),name,grade:document.getElementById('f-grade').value,program:document.getElementById('f-program').value,detail:document.getElementById('f-detail').value,phone:document.getElementById('f-phone').value,memo:document.getElementById('f-memo').value};
   if(editStudentId){const i=students.findIndex(x=>x.id===editStudentId);students[i]=s;}else students.push(s);
   document.getElementById('s-modal').classList.remove('open');renderStudents();
-  if(API_URL){await apiPost({action:'saveStudent',data:s});setBadge('ok','✓ 저장됨');}
+  if(API_URL){
+    await apiAction({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,program:s.program,detail:s.detail,phone:s.phone,memo:s.memo});
+    setBadge('ok','✓ 저장됨');
+  }
 }
 async function deleteStudent(id){
   if(!confirm('삭제하시겠습니까?'))return;
   students=students.filter(x=>x.id!==id);renderStudents();
-  if(API_URL){await apiPost({action:'deleteStudent',id});setBadge('ok','✓ 저장됨');}
+  if(API_URL){await apiAction({action:'deleteStudent',id});setBadge('ok','✓ 저장됨');}
 }
 function renderStudents(){
   const q=(document.getElementById('s-search').value||'').toLowerCase();
@@ -471,12 +476,15 @@ async function saveDailyRecord(){
   document.getElementById('d-task-normal').checked=false;document.getElementById('d-task-special').checked=false;
   document.getElementById('d-student').value='';document.getElementById('d-grade').value='';document.getElementById('d-program').value='';
   renderDaily();
-  if(API_URL){await apiPost({action:'saveRecord',data:rec});setBadge('ok','✓ 저장됨');}
+  if(API_URL){
+    await apiAction({action:'saveRecord',id:rec.id,date:rec.date,studentId:rec.studentId,name:rec.name,grade:rec.grade,program:rec.program,arrive:rec.arrive,depart:rec.depart,btStart:rec.btStart,btEnd:rec.btEnd,taskNormal:rec.taskNormal?'Y':'N',taskSpecial:rec.taskSpecial?'Y':'N',memo:rec.memo});
+    setBadge('ok','✓ 저장됨');
+  }
 }
 async function deleteRecord(id){
   if(!confirm('삭제하시겠습니까?'))return;
   records=records.filter(x=>x.id!==id);renderDaily();
-  if(API_URL){await apiPost({action:'deleteRecord',id});setBadge('ok','✓ 저장됨');}
+  if(API_URL){await apiAction({action:'deleteRecord',id});setBadge('ok','✓ 저장됨');}
 }
 function renderDaily(){
   initDailyStudentSelect();updateDailyLabel();
