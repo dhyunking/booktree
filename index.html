@@ -94,16 +94,14 @@ select:disabled{opacity:0.4;cursor:not-allowed}
     <p id="today-date"></p>
   </div>
   <div>
-    <div class="url-row">
-      <input type="text" id="api-url" placeholder="Google Apps Script 웹 앱 URL을 입력하세요..." value="">
-      <button class="btn primary" onclick="applyUrl()">연결</button>
-      <span class="sync-badge" id="sync-badge">미연결</span>
-      <button class="btn small" onclick="syncAll()" title="지금 동기화">🔄</button>
-    </div>
-    <div class="auto-sync-row" style="margin-top:5px;justify-content:flex-end">
+    <div class="auto-sync-row" style="justify-content:flex-end">
+      <span class="sync-badge" id="sync-badge">연결 중...</span>
+      <button class="btn small" onclick="syncAll()" title="지금 동기화">🔄 새로고침</button>
       <label class="auto-sync-toggle">
         <input type="checkbox" id="auto-sync-toggle" checked onchange="toggleAutoSync()"> 30초 자동 동기화
       </label>
+    </div>
+    <div style="margin-top:4px;text-align:right">
       <span class="last-sync" id="last-sync-time"></span>
     </div>
   </div>
@@ -256,7 +254,7 @@ const DETAIL_MAP={'65분':['65분 주2회','65분 주3회','65분 주5회'],'95�
 const DURATION={'65분 주2회':65,'65분 주3회':65,'65분 주5회':65,'95분 주1회':95,'95분 주2회':95,'95분 주3회':95,'95분 주5회':95,'방학특강 15회':95};
 const DAYS=['일','월','화','수','목','금','토'];
 
-let students=[], records=[], editStudentId=null, API_URL='';
+let students=[], records=[], editStudentId=null, API_URL='https://script.google.com/macros/s/AKfycbyZgN44kvVbPDKcdg6lVnJ-iTpx4hlrVctMgbQT2A4lbqH21f9CYLk5OhFyXgfa9cU/exec';
 
 // 날짜 표시
 const now=new Date();
@@ -555,13 +553,12 @@ function switchTab(t){
   if(t==='history')initHistory();
 }
 
-// 초기화
-const savedUrl=localStorage.getItem('chaenamu_api_url')||'';
-if(savedUrl){document.getElementById('api-url').value=savedUrl;API_URL=savedUrl;syncAll().then(()=>startAutoSync());}
+// 초기화 — URL 고정, 자동 연결
+syncAll().then(()=>startAutoSync());
 document.getElementById('daily-date').value=todayStr();
 updateDailyLabel();renderStudents();
 
-// 탭 전환 시 즉시 동기화
+// 화면 다시 열 때 즉시 동기화
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'&&API_URL) silentSync();
 });
