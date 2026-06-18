@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>책나무 서래초점 — 원생관리</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1a1a1a;background:#f5f5f5}
+.app{max-width:1100px;margin:0 auto;padding:1rem}
+.app-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px;background:#fff;border-radius:12px;padding:1rem 1.25rem;border:1px solid #e5e5e5}
+.app-header h1{font-size:17px;font-weight:600}
+.app-header p{font-size:12px;color:#888;margin-top:2px}
+.url-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.url-row input{flex:1;min-width:220px;font-size:12px;font-family:monospace;padding:5px 10px;border:1px solid #ddd;border-radius:6px}
+.sync-badge{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid #ddd;background:#f5f5f5;color:#666;white-space:nowrap}
+.sync-badge.ok{background:#EAF3DE;color:#2d6a0a;border-color:#97C459}
+.sync-badge.err{background:#FCEBEB;color:#A32D2D;border-color:#F09595}
+.sync-badge.loading{background:#E6F1FB;color:#185FA5;border-color:#85B7EB}
+.tabs{display:flex;gap:2px;border-bottom:1px solid #e5e5e5;margin-bottom:1.25rem;background:#fff;border-radius:12px 12px 0 0;padding:.5rem .5rem 0;border:1px solid #e5e5e5;border-bottom:none}
+.tab-btn{padding:8px 16px;font-size:13px;border:none;background:none;cursor:pointer;color:#888;border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:6px 6px 0 0}
+.tab-btn.active{color:#185FA5;font-weight:600;border-bottom-color:#185FA5;background:#f0f7ff}
+.tab-pane{display:none;background:#fff;border:1px solid #e5e5e5;border-top:none;border-radius:0 0 12px 12px;padding:1.25rem}
+.tab-pane.active{display:block}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;border:1px solid #ddd;background:#fff;color:#1a1a1a;cursor:pointer;font-size:13px;white-space:nowrap;font-family:inherit}
+.btn:hover{background:#f5f5f5}
+.btn.primary{background:#185FA5;color:#fff;border-color:#185FA5}.btn.primary:hover{background:#0C447C}
+.btn.danger{color:#A32D2D}.btn.danger:hover{background:#FCEBEB}
+.btn.success{background:#3B6D11;color:#fff;border-color:#3B6D11}.btn.success:hover{background:#27500A}
+.btn.small{padding:4px 10px;font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1.25rem}
+.stat{background:#f8f8f8;border-radius:8px;padding:.75rem 1rem;border:1px solid #eee}
+.stat-label{font-size:11px;color:#888;margin-bottom:4px}
+.stat-value{font-size:22px;font-weight:600}
+.stat-value.blue{color:#185FA5}.stat-value.green{color:#3B6D11}.stat-value.amber{color:#854F0B}
+.toolbar{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.toolbar input[type=text]{flex:1;min-width:140px;padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px}
+.toolbar select{padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff}
+.table-wrap{border:1px solid #e5e5e5;border-radius:10px;overflow:auto}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:600;color:#666;padding:9px 12px;border-bottom:1px solid #e5e5e5;text-align:left;background:#f8f8f8;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.badge.green{background:#EAF3DE;color:#3B6D11}.badge.blue{background:#E6F1FB;color:#185FA5}
+.badge.amber{background:#FAEEDA;color:#854F0B}.badge.purple{background:#EEEDFE;color:#534AB7}
+.badge.gray{background:#f0f0f0;color:#666}
+.task-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:3px}
+.task-badge.normal{background:#E6F1FB;color:#185FA5}.task-badge.special{background:#FAEEDA;color:#854F0B}
+.depart-val{color:#A32D2D;font-weight:600}
+.empty{text-align:center;padding:2.5rem;color:#aaa}
+.empty span{font-size:28px;display:block;margin-bottom:.5rem}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:14px;border:1px solid #e5e5e5;padding:1.5rem;width:min(620px,95vw);max-height:88vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.12)}
+.modal h2{font-size:16px;font-weight:600;margin-bottom:1.25rem}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+.fg{display:flex;flex-direction:column;gap:4px}
+.fg.full{grid-column:1/-1}
+.fg label{font-size:11px;color:#888;font-weight:500}
+.fg input,.fg select,.fg textarea{font-size:13px;padding:7px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-family:inherit;color:#1a1a1a}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:#185FA5}
+.fg textarea{resize:vertical;min-height:56px}
+.fg input[readonly]{background:#f8f8f8;color:#888}
+.sep{grid-column:1/-1;border:none;border-top:1px solid #f0f0f0;margin:4px 0}
+.sec-lbl{grid-column:1/-1;font-size:11px;font-weight:600;color:#888;padding-top:4px}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:1.25rem;padding-top:1rem;border-top:1px solid #f0f0f0}
+.cb-group{display:flex;gap:16px;padding:5px 0}
+.cb-group label{display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;color:#1a1a1a}
+.cb-group input[type=checkbox]{width:15px;height:15px;cursor:pointer}
+select:disabled{opacity:0.4;cursor:not-allowed}
+.depart-hint{font-size:11px;color:#A32D2D;margin-top:2px;min-height:14px;font-weight:500}
+.daily-card{background:#f8fcf4;border:1px solid #c8e6a0;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem}
+.daily-card h3{font-size:13px;font-weight:600;margin-bottom:.75rem;color:#2d6a0a}
+.daily-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px;margin-bottom:.75rem}
+.history-filter{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.history-filter select{padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff}
+.month-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:#E6F1FB;color:#0C447C;font-weight:500}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:#185FA5;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="app-header">
+  <div>
+    <h1>📚 책나무 서래초점 — 원생관리</h1>
+    <p id="today-date"></p>
+  </div>
+  <div class="url-row">
+    <input type="text" id="api-url" placeholder="Google Apps Script 웹 앱 URL을 입력하세요..." value="">
+    <button class="btn primary" onclick="applyUrl()">연결</button>
+    <span class="sync-badge" id="sync-badge">미연결</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('students')">👥 원생 정보</button>
+  <button class="tab-btn" onclick="switchTab('daily')">📋 일일 출석부</button>
+  <button class="tab-btn" onclick="switchTab('history')">📅 월별 히스토리</button>
+</div>
+
+<!-- 원생 정보 탭 -->
+<div id="pane-students" class="tab-pane active">
+  <div class="stats">
+    <div class="stat"><div class="stat-label">총 재원생</div><div class="stat-value blue" id="st-total">0</div></div>
+    <div class="stat"><div class="stat-label">65분 과정</div><div class="stat-value green" id="st-65">0</div></div>
+    <div class="stat"><div class="stat-label">95분 과정</div><div class="stat-value amber" id="st-95">0</div></div>
+  </div>
+  <div class="toolbar">
+    <input type="text" id="s-search" placeholder="이름·연락처 검색..." oninput="renderStudents()">
+    <select id="s-filter-grade" onchange="renderStudents()">
+      <option value="">전체 학년</option>
+      <option>유치부</option><option>1학년</option><option>2학년</option><option>3학년</option>
+      <option>4학년</option><option>5학년</option><option>6학년</option><option>중등부</option>
+    </select>
+    <select id="s-filter-prog" onchange="syncSFDetail()">
+      <option value="">전체 프로그램</option>
+      <option value="65분">65분 과정</option><option value="95분">95분 과정</option><option value="방학특강">방학특강</option>
+    </select>
+    <select id="s-filter-detail" onchange="renderStudents()" disabled><option value="">세부 프로그램</option></select>
+    <button class="btn primary" onclick="openStudentModal()">+ 원생 등록</button>
+    <button class="btn" onclick="syncAll()" id="sync-btn">🔄 새로고침</button>
+  </div>
+  <div class="table-wrap">
+    <table style="min-width:700px">
+      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>세부 프로그램</th><th>학부모 연락처</th><th>기타</th><th>관리</th></tr></thead>
+      <tbody id="s-tbody"></tbody>
+    </table>
+    <div class="empty" id="s-empty" style="display:none"><span>👥</span>등록된 원생이 없습니다</div>
+  </div>
+</div>
+
+<!-- 일일 출석부 탭 -->
+<div id="pane-daily" class="tab-pane">
+  <div class="toolbar" style="margin-bottom:.75rem">
+    <strong id="daily-label" style="font-size:14px"></strong>
+    <input type="date" id="daily-date" onchange="renderDaily()" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px">
+    <button class="btn small" onclick="setToday()">오늘</button>
+  </div>
+  <div class="daily-card">
+    <h3>✏️ 출석 기록 추가</h3>
+    <div class="daily-form">
+      <div class="fg">
+        <label>학생 선택</label>
+        <select id="d-student" onchange="fillInfo()">
+          <option value="">학생 선택...</option>
+        </select>
+      </div>
+      <div class="fg"><label>학년</label><input type="text" id="d-grade" readonly></div>
+      <div class="fg"><label>프로그램</label><input type="text" id="d-program" readonly></div>
+      <div class="fg">
+        <label>등원 시간</label>
+        <input type="time" id="d-arrive" oninput="calcDepart()">
+        <div class="depart-hint" id="d-hint"></div>
+      </div>
+      <div class="fg">
+        <label>하원 시간 <span style="color:#A32D2D;font-size:10px">자동계산</span></label>
+        <input type="time" id="d-depart" readonly style="color:#A32D2D;font-weight:600">
+      </div>
+      <div class="fg"><label>북토크 시작</label><input type="time" id="d-bt-start"></div>
+      <div class="fg"><label>북토크 종료</label><input type="time" id="d-bt-end"></div>
+    </div>
+    <div class="daily-form" style="margin-bottom:.75rem">
+      <div class="fg full">
+        <label>해야 할 일</label>
+        <div class="cb-group">
+          <label><input type="checkbox" id="d-task-normal"> 일반 활동지</label>
+          <label><input type="checkbox" id="d-task-special"> 특별 활동지</label>
+        </div>
+      </div>
+      <div class="fg full"><label>기타 메모</label><textarea id="d-memo" placeholder="오늘의 특이사항..."></textarea></div>
+    </div>
+    <button class="btn success" onclick="saveDailyRecord()">✅ 기록 저장</button>
+  </div>
+  <div class="table-wrap">
+    <table style="min-width:760px">
+      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>등원</th><th>북토크 시작</th><th>북토크 종료</th><th>해야할 일</th><th>하원</th><th>메모</th><th>관리</th></tr></thead>
+      <tbody id="d-tbody"></tbody>
+    </table>
+    <div class="empty" id="d-empty" style="display:none"><span>📋</span>오늘 출석 기록이 없습니다</div>
+  </div>
+</div>
+
+<!-- 월별 히스토리 탭 -->
+<div id="pane-history" class="tab-pane">
+  <div class="history-filter">
+    <select id="h-year" onchange="renderHistory()" style="width:90px"></select>
+    <select id="h-month" onchange="renderHistory()" style="width:80px"><option value="">전체</option></select>
+    <select id="h-student" onchange="renderHistory()" style="width:130px"><option value="">전체 학생</option></select>
+    <span id="h-count" style="font-size:12px;color:#888;margin-left:4px"></span>
+    <button class="btn small" onclick="exportHistory()" style="margin-left:auto">⬇️ CSV 내보내기</button>
+  </div>
+  <div class="table-wrap">
+    <table style="min-width:800px">
+      <thead><tr><th>날짜</th><th>이름</th><th>학년</th><th>프로그램</th><th>등원</th><th>북토크 시작</th><th>북토크 종료</th><th>해야할 일</th><th>하원</th><th>메모</th></tr></thead>
+      <tbody id="h-tbody"></tbody>
+    </table>
+    <div class="empty" id="h-empty" style="display:none"><span>📅</span>기록이 없습니다</div>
+  </div>
+</div>
+
+</div>
+
+<!-- 원생 등록/수정 모달 -->
+<div class="modal-overlay" id="s-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <h2 id="s-modal-title">원생 등록</h2>
+    <div class="form-grid">
+      <div class="sec-lbl">기본 정보</div>
+      <div class="fg"><label>이름 *</label><input type="text" id="f-name"></div>
+      <div class="fg"><label>학년</label>
+        <select id="f-grade">
+          <option value="">선택</option><option>유치부</option><option>1학년</option><option>2학년</option>
+          <option>3학년</option><option>4학년</option><option>5학년</option><option>6학년</option><option>중등부</option>
+        </select>
+      </div>
+      <div class="fg"><label>전체 프로그램</label>
+        <select id="f-program" onchange="syncFDetail()">
+          <option value="">선택</option><option value="65분">65분 과정</option>
+          <option value="95분">95분 과정</option><option value="방학특강">방학특강</option>
+        </select>
+      </div>
+      <div class="fg"><label>세부 프로그램</label>
+        <select id="f-detail" disabled><option value="">전체 프로그램 먼저 선택</option></select>
+      </div>
+      <div class="fg"><label>학부모 연락처</label><input type="tel" id="f-phone" placeholder="010-0000-0000"></div>
+      <hr class="sep">
+      <div class="sec-lbl">기타 사항</div>
+      <div class="fg full"><textarea id="f-memo" placeholder="알레르기, 학습 특성 등"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="document.getElementById('s-modal').classList.remove('open')">취소</button>
+      <button class="btn primary" onclick="saveStudent()">✅ 저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DETAIL_MAP={'65분':['65분 주2회','65분 주3회','65분 주5회'],'95분':['95분 주1회','95분 주2회','95분 주3회','95분 주5회'],'방학특강':['방학특강 15회']};
+const DURATION={'65분 주2회':65,'65분 주3회':65,'65분 주5회':65,'95분 주1회':95,'95분 주2회':95,'95분 주3회':95,'95분 주5회':95,'방학특강 15회':95};
+const DAYS=['일','월','화','수','목','금','토'];
+
+let students=[], records=[], editStudentId=null, API_URL='';
+
+// 날짜 표시
+const now=new Date();
+document.getElementById('today-date').textContent=now.getFullYear()+'년 '+(now.getMonth()+1)+'월 '+now.getDate()+'일 ('+DAYS[now.getDay()]+')';
+
+function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
+function fmtTime(t){if(!t||t==='-')return '-';const[h,m]=t.split(':');const hh=+h;return(hh<12?'오전 ':'오후 ')+(hh===0?12:hh>12?hh-12:hh)+':'+m;}
+function addMins(t,m){if(!t)return '';const[h,mn]=t.split(':').map(Number);const tot=h*60+mn+m;return String(Math.floor(tot/60)%24).padStart(2,'0')+':'+String(tot%60).padStart(2,'0');}
+
+// ── API 연결 ──────────────────────────────────────────────────────
+function applyUrl(){
+  const url=document.getElementById('api-url').value.trim();
+  if(!url){alert('URL을 입력해주세요.');return;}
+  API_URL=url;
+  localStorage.setItem('chaenamu_api_url',url);
+  syncAll();
+}
+
+function setBadge(state,text){
+  const el=document.getElementById('sync-badge');
+  el.textContent=text;el.className='sync-badge '+state;
+}
+
+async function apiFetch(params){
+  if(!API_URL)throw new Error('API URL 미설정');
+  const url=API_URL+'?'+new URLSearchParams(params);
+  const res=await fetch(url);
+  return res.json();
+}
+
+async function apiPost(body){
+  if(!API_URL)throw new Error('API URL 미설정');
+  const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return res.json();
+}
+
+async function syncAll(){
+  if(!API_URL){setBadge('err','미연결');return;}
+  setBadge('loading','동기화 중...');
+  try{
+    const [sr,rr]=await Promise.all([apiFetch({action:'getStudents'}),apiFetch({action:'getRecords'})]);
+    if(sr.ok)students=sr.data;
+    if(rr.ok)records=rr.data.map(r=>({...r,taskNormal:r.taskNormal==='Y'||r.taskNormal===true,taskSpecial:r.taskSpecial==='Y'||r.taskSpecial===true}));
+    setBadge('ok','✓ 연결됨');
+    renderStudents();renderDaily();
+    if(document.getElementById('pane-history').classList.contains('active'))renderHistory();
+  }catch(e){setBadge('err','연결 오류');}
+}
+
+// ── 원생 정보 탭 ──────────────────────────────────────────────────
+function syncFDetail(){
+  const p=document.getElementById('f-program').value;
+  const sel=document.getElementById('f-detail');
+  if(!p){sel.innerHTML='<option value="">전체 프로그램 먼저 선택</option>';sel.disabled=true;return;}
+  sel.innerHTML='<option value="">선택</option>'+(DETAIL_MAP[p]||[]).map(o=>'<option>'+o+'</option>').join('');
+  sel.disabled=false;
+  if((DETAIL_MAP[p]||[]).length===1)sel.value=DETAIL_MAP[p][0];
+}
+function syncSFDetail(){
+  const p=document.getElementById('s-filter-prog').value;
+  const sel=document.getElementById('s-filter-detail');
+  if(!p){sel.innerHTML='<option value="">세부 프로그램</option>';sel.disabled=true;renderStudents();return;}
+  sel.innerHTML='<option value="">세부 전체</option>'+(DETAIL_MAP[p]||[]).map(o=>'<option>'+o+'</option>').join('');
+  sel.disabled=false;renderStudents();
+}
+function mainBadge(p){
+  if(p==='65분')return '<span class="badge green">65분</span>';
+  if(p==='95분')return '<span class="badge blue">95분</span>';
+  if(p==='방학특강')return '<span class="badge amber">방학특강</span>';
+  return '<span class="badge gray">-</span>';
+}
+function taskBadges(n,s){let o='';if(n)o+='<span class="task-badge normal">일반</span>';if(s)o+='<span class="task-badge special">특별</span>';return o||'-';}
+
+function openStudentModal(id){
+  editStudentId=id||null;
+  document.getElementById('s-modal-title').textContent=id?'원생 수정':'원생 등록';
+  if(id){
+    const s=students.find(x=>x.id===id);
+    document.getElementById('f-name').value=s.name||'';document.getElementById('f-grade').value=s.grade||'';
+    document.getElementById('f-program').value=s.program||'';syncFDetail();
+    document.getElementById('f-detail').value=s.detail||'';
+    document.getElementById('f-phone').value=s.phone||'';document.getElementById('f-memo').value=s.memo||'';
+  }else{
+    ['f-name','f-phone','f-memo'].forEach(k=>document.getElementById(k).value='');
+    document.getElementById('f-grade').value='';document.getElementById('f-program').value='';
+    document.getElementById('f-detail').innerHTML='<option value="">전체 프로그램 먼저 선택</option>';
+    document.getElementById('f-detail').disabled=true;
+  }
+  document.getElementById('s-modal').classList.add('open');
+}
+async function saveStudent(){
+  const name=document.getElementById('f-name').value.trim();
+  if(!name){alert('이름을 입력해주세요.');return;}
+  const s={id:editStudentId||uid(),name,grade:document.getElementById('f-grade').value,program:document.getElementById('f-program').value,detail:document.getElementById('f-detail').value,phone:document.getElementById('f-phone').value,memo:document.getElementById('f-memo').value};
+  if(editStudentId){const i=students.findIndex(x=>x.id===editStudentId);students[i]=s;}else students.push(s);
+  document.getElementById('s-modal').classList.remove('open');renderStudents();
+  if(API_URL){await apiPost({action:'saveStudent',data:s});setBadge('ok','✓ 저장됨');}
+}
+async function deleteStudent(id){
+  if(!confirm('삭제하시겠습니까?'))return;
+  students=students.filter(x=>x.id!==id);renderStudents();
+  if(API_URL){await apiPost({action:'deleteStudent',id});setBadge('ok','✓ 저장됨');}
+}
+function renderStudents(){
+  const q=(document.getElementById('s-search').value||'').toLowerCase();
+  const fg=document.getElementById('s-filter-grade').value;
+  const fp=document.getElementById('s-filter-prog').value;
+  const fd=document.getElementById('s-filter-detail').value;
+  document.getElementById('st-total').textContent=students.length;
+  document.getElementById('st-65').textContent=students.filter(s=>s.program==='65분').length;
+  document.getElementById('st-95').textContent=students.filter(s=>s.program==='95분'||s.program==='방학특강').length;
+  let list=students.filter(s=>{
+    if(fg&&s.grade!==fg)return false;if(fp&&s.program!==fp)return false;if(fd&&s.detail!==fd)return false;
+    if(q&&!((s.name||'').toLowerCase().includes(q)||(s.phone||'').includes(q)))return false;return true;
+  });
+  const tb=document.getElementById('s-tbody');
+  if(!list.length){tb.innerHTML='';document.getElementById('s-empty').style.display='block';return;}
+  document.getElementById('s-empty').style.display='none';
+  tb.innerHTML=list.map(s=>`<tr>
+    <td style="font-weight:600">${s.name}</td><td>${s.grade||'-'}</td>
+    <td>${mainBadge(s.program)}</td>
+    <td>${s.detail?'<span class="badge purple">'+s.detail+'</span>':'-'}</td>
+    <td>${s.phone||'-'}</td>
+    <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888">${s.memo||'-'}</td>
+    <td style="white-space:nowrap">
+      <button class="btn small" onclick="openStudentModal('${s.id}')">✏️</button>
+      <button class="btn small danger" onclick="deleteStudent('${s.id}')">🗑️</button>
+    </td></tr>`).join('');
+}
+
+// ── 일일 출석부 탭 ────────────────────────────────────────────────
+function setToday(){document.getElementById('daily-date').value=todayStr();renderDaily();}
+function updateDailyLabel(){
+  const v=document.getElementById('daily-date').value;
+  if(!v)return;
+  const d=new Date(v+'T00:00:00');
+  document.getElementById('daily-label').textContent=d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 ('+DAYS[d.getDay()]+')';
+}
+function fillInfo(){
+  const id=document.getElementById('d-student').value;
+  const s=students.find(x=>x.id===id);
+  document.getElementById('d-grade').value=s?s.grade:'';
+  document.getElementById('d-program').value=s?(s.detail||s.program||''):'';
+  calcDepart();
+}
+function calcDepart(){
+  const arrive=document.getElementById('d-arrive').value;
+  const id=document.getElementById('d-student').value;
+  const s=students.find(x=>x.id===id);
+  const mins=s?DURATION[s.detail]:null;
+  const hint=document.getElementById('d-hint');
+  if(arrive&&mins){const dep=addMins(arrive,mins);document.getElementById('d-depart').value=dep;hint.textContent='예상 하원: '+fmtTime(dep)+' ('+mins+'분)';}
+  else{document.getElementById('d-depart').value='';hint.textContent=arrive&&!mins?'프로그램 정보 없음':'';}
+}
+function initDailyStudentSelect(){
+  const sel=document.getElementById('d-student');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">학생 선택...</option>'+students.map(s=>'<option value="'+s.id+'">'+s.name+' ('+s.grade+')</option>').join('');
+  if(cur)sel.value=cur;
+}
+async function saveDailyRecord(){
+  const sid=document.getElementById('d-student').value;
+  if(!sid){alert('학생을 선택해주세요.');return;}
+  const s=students.find(x=>x.id===sid);
+  const date=document.getElementById('daily-date').value||todayStr();
+  const rec={id:uid(),date,studentId:sid,name:s.name,grade:s.grade,program:s.detail||s.program||'',arrive:document.getElementById('d-arrive').value,depart:document.getElementById('d-depart').value,btStart:document.getElementById('d-bt-start').value,btEnd:document.getElementById('d-bt-end').value,taskNormal:document.getElementById('d-task-normal').checked,taskSpecial:document.getElementById('d-task-special').checked,memo:document.getElementById('d-memo').value};
+  records.push(rec);
+  ['d-arrive','d-bt-start','d-bt-end','d-memo'].forEach(k=>document.getElementById(k).value='');
+  document.getElementById('d-depart').value='';document.getElementById('d-hint').textContent='';
+  document.getElementById('d-task-normal').checked=false;document.getElementById('d-task-special').checked=false;
+  document.getElementById('d-student').value='';document.getElementById('d-grade').value='';document.getElementById('d-program').value='';
+  renderDaily();
+  if(API_URL){await apiPost({action:'saveRecord',data:rec});setBadge('ok','✓ 저장됨');}
+}
+async function deleteRecord(id){
+  if(!confirm('삭제하시겠습니까?'))return;
+  records=records.filter(x=>x.id!==id);renderDaily();
+  if(API_URL){await apiPost({action:'deleteRecord',id});setBadge('ok','✓ 저장됨');}
+}
+function renderDaily(){
+  initDailyStudentSelect();updateDailyLabel();
+  const date=document.getElementById('daily-date').value||todayStr();
+  const list=records.filter(r=>r.date===date).sort((a,b)=>a.arrive>b.arrive?1:-1);
+  const tb=document.getElementById('d-tbody');
+  if(!list.length){tb.innerHTML='';document.getElementById('d-empty').style.display='block';return;}
+  document.getElementById('d-empty').style.display='none';
+  tb.innerHTML=list.map(r=>`<tr>
+    <td style="font-weight:600">${r.name}</td><td>${r.grade||'-'}</td>
+    <td><span class="badge purple" style="font-size:11px">${r.program||'-'}</span></td>
+    <td>${fmtTime(r.arrive)}</td><td>${fmtTime(r.btStart)}</td><td>${fmtTime(r.btEnd)}</td>
+    <td>${taskBadges(r.taskNormal,r.taskSpecial)}</td>
+    <td>${r.depart?'<span class="depart-val">'+fmtTime(r.depart)+'</span>':'-'}</td>
+    <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888">${r.memo||'-'}</td>
+    <td><button class="btn small danger" onclick="deleteRecord('${r.id}')">🗑️</button></td>
+  </tr>`).join('');
+}
+
+// ── 월별 히스토리 탭 ──────────────────────────────────────────────
+function initHistory(){
+  const yr=now.getFullYear();
+  const ySel=document.getElementById('h-year');
+  ySel.innerHTML=[yr-1,yr,yr+1].map(y=>'<option'+(y===yr?' selected':'')+'>'+y+'</option>').join('');
+  const mSel=document.getElementById('h-month');
+  mSel.innerHTML='<option value="">전체</option>'+Array.from({length:12},(_,i)=>'<option value="'+(i+1)+'"'+(i===now.getMonth()?' selected':'')+'>'+(i+1)+'월</option>').join('');
+  const hSel=document.getElementById('h-student');
+  hSel.innerHTML='<option value="">전체 학생</option>'+students.map(s=>'<option value="'+s.id+'">'+s.name+'</option>').join('');
+  renderHistory();
+}
+function renderHistory(){
+  const yr=document.getElementById('h-year').value;
+  const mo=document.getElementById('h-month').value;
+  const sid=document.getElementById('h-student').value;
+  let list=records.filter(r=>{
+    if(!r.date)return false;
+    const[ry,rm]=r.date.split('-');
+    if(yr&&ry!==yr)return false;if(mo&&+rm!==+mo)return false;if(sid&&r.studentId!==sid)return false;return true;
+  }).sort((a,b)=>a.date>b.date?-1:1);
+  document.getElementById('h-count').textContent=list.length+'건';
+  const tb=document.getElementById('h-tbody');
+  if(!list.length){tb.innerHTML='';document.getElementById('h-empty').style.display='block';return;}
+  document.getElementById('h-empty').style.display='none';
+  tb.innerHTML=list.map(r=>{
+    const d=new Date(r.date+'T00:00:00');
+    const dl=(d.getMonth()+1)+'/'+d.getDate()+'('+DAYS[d.getDay()]+')';
+    return`<tr>
+      <td><span class="month-badge">${dl}</span></td>
+      <td style="font-weight:600">${r.name}</td><td>${r.grade||'-'}</td>
+      <td><span class="badge purple" style="font-size:11px">${r.program||'-'}</span></td>
+      <td>${fmtTime(r.arrive)}</td><td>${fmtTime(r.btStart)}</td><td>${fmtTime(r.btEnd)}</td>
+      <td>${taskBadges(r.taskNormal,r.taskSpecial)}</td>
+      <td>${r.depart?'<span class="depart-val">'+fmtTime(r.depart)+'</span>':'-'}</td>
+      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888">${r.memo||'-'}</td>
+    </tr>`;
+  }).join('');
+}
+function exportHistory(){
+  const yr=document.getElementById('h-year').value;
+  const mo=document.getElementById('h-month').value;
+  const list=records.filter(r=>{if(!r.date)return false;const[ry,rm]=r.date.split('-');if(yr&&ry!==yr)return false;if(mo&&+rm!==+mo)return false;return true;}).sort((a,b)=>a.date>b.date?-1:1);
+  const header='날짜,이름,학년,프로그램,등원,북토크시작,북토크종료,일반활동지,특별활동지,하원,메모';
+  const rows=list.map(r=>[r.date,r.name,r.grade,r.program,r.arrive,r.btStart,r.btEnd,r.taskNormal?'Y':'N',r.taskSpecial?'Y':'N',r.depart,'"'+(r.memo||'')+'"'].join(','));
+  const blob=new Blob(['\uFEFF'+header+'\n'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='책나무_히스토리_'+yr+(mo?'_'+mo+'월':'')+'.csv';a.click();URL.revokeObjectURL(url);
+}
+
+function switchTab(t){
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>{b.classList.toggle('active',['students','daily','history'][i]===t);});
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pane-'+t).classList.add('active');
+  if(t==='daily')renderDaily();
+  if(t==='history')initHistory();
+}
+
+// 초기화
+const savedUrl=localStorage.getItem('chaenamu_api_url')||'';
+if(savedUrl){document.getElementById('api-url').value=savedUrl;API_URL=savedUrl;syncAll();}
+document.getElementById('daily-date').value=todayStr();
+updateDailyLabel();renderStudents();
+</script>
+</body>
+</html>
