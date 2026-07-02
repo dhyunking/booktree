@@ -262,6 +262,10 @@ tr:hover td{background:#fafafa}
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#854F0B;margin-right:4px"></span>메모/업무일지</span>
     </div>
   </div>
+  <div id="h-day-memos" style="display:none;margin-bottom:1rem">
+    <h4 id="h-day-memo-title" style="font-size:13px;font-weight:600;color:#854F0B;margin-bottom:.5rem"></h4>
+    <div id="h-day-memo-list"></div>
+  </div>
   <div class="tw">
     <table style="min-width:820px">
       <thead><tr><th>날짜</th><th>이름</th><th>학년</th><th>프로그램</th><th>등원</th><th>북토크 시작</th><th>북토크 종료</th><th>해야할 일</th><th>하원</th><th>메모</th></tr></thead>
@@ -800,11 +804,20 @@ function drawCal(){
     if(recMap[d]){for(let i=0;i<Math.min(recMap[d],5);i++){const dot=document.createElement('div');dot.className='cal-dot rec';dots.appendChild(dot);}}
     if(memoMap[d]){for(let i=0;i<Math.min(memoMap[d],3);i++){const dot=document.createElement('div');dot.className='cal-dot mem';dots.appendChild(dot);}}
     if(recMap[d]||memoMap[d])el.appendChild(dots);
+    const d2=d; // 클로저용 날짜 변수
     el.onclick=()=>{
       document.querySelectorAll('.cal-day').forEach(x=>x.classList.remove('sel'));
       el.classList.add('sel');
-      RHL(records.filter(r=>String(r.date||'').trim()===dateStr));
-      document.getElementById('h-cnt').textContent=records.filter(r=>String(r.date||'').trim()===dateStr).length+'건';
+      const dayRecs=records.filter(r=>String(r.date||'').trim()===dateStr);
+      RHL(dayRecs);
+      document.getElementById('h-cnt').textContent=dayRecs.length+'건';
+      const dayMemos=memos.filter(m=>{
+        if(!m.ts)return false;
+        const md=new Date(+m.ts);
+        if(isNaN(md.getTime()))return false;
+        return md.getFullYear()===calY&&md.getMonth()===calM&&md.getDate()===d2;
+      });
+      showDayMemos(dateStr, dayMemos);
     };
     grid.appendChild(el);
   }
@@ -827,6 +840,23 @@ function RHL(list){
       <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888">${r.memo||'-'}</td>
     </tr>`;
   }).join('');
+}
+function showDayMemos(dateStr, list){
+  const wrap=document.getElementById('h-day-memos');
+  const title=document.getElementById('h-day-memo-title');
+  const mlist=document.getElementById('h-day-memo-list');
+  if(!list.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  title.textContent='📝 '+dateStr+' 메모/업무일지 ('+list.length+'건)';
+  mlist.innerHTML=list.map(m=>`
+    <div style="background:#fffdf0;border:1px solid #e0d080;border-radius:8px;padding:.625rem 1rem;margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:.25rem;flex-wrap:wrap">
+        <span class="badge ${CCAT[m.category]||'gy'}">${CEMOJI[m.category]||'💬'} ${m.category||'기타'}</span>
+        <strong style="font-size:12px">${m.author||'익명'}</strong>
+        <span style="font-size:11px;color:#aaa">${fdt(m.ts)}</span>
+      </div>
+      <div style="font-size:13px;color:#333;line-height:1.5;white-space:pre-wrap">${(m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>
+    </div>`).join('');
 }
 function expH(){
   const yr=document.getElementById('h-yr').value;
