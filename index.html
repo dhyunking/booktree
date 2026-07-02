@@ -199,21 +199,9 @@ select:disabled{opacity:0.4;cursor:not-allowed}
         <label>하원 시간 <span style="color:#A32D2D;font-size:10px">자동계산</span></label>
         <input type="time" id="d-depart" readonly style="color:#A32D2D;font-weight:600">
       </div>
-      <div class="fg"><label>북토크 시작 <span style="color:#888;font-size:10px">나중에 입력 가능</span></label><input type="time" id="d-bt-start"></div>
-      <div class="fg"><label>북토크 종료 <span style="color:#888;font-size:10px">나중에 입력 가능</span></label><input type="time" id="d-bt-end"></div>
     </div>
-    <div class="daily-form" style="margin-bottom:.75rem">
-      <div class="fg full">
-        <label>해야 할 일</label>
-        <div class="cb-group">
-          <label><input type="checkbox" id="d-task-normal"> 일반 활동지</label>
-          <label><input type="checkbox" id="d-task-special"> 특별 활동지</label>
-          <label><input type="checkbox" id="d-task-booktalk"> 북토크</label>
-        </div>
-      </div>
-      <div class="fg full"><label>기타 메모</label><textarea id="d-memo" placeholder="오늘의 특이사항..."></textarea></div>
-    </div>
-    <button class="btn success" onclick="saveDailyRecord()">✅ 기록 저장</button>
+    <p style="font-size:11px;color:#888;margin-bottom:.75rem">💡 북토크 시간, 해야할 일, 메모는 저장 후 리스트에서 ✏️ 버튼으로 입력하세요.</p>
+    <button class="btn success" onclick="saveDailyRecord()">✅ 등원 기록 저장</button>
   </div>
   <div class="table-wrap">
     <table style="min-width:820px">
@@ -389,9 +377,55 @@ const API_URL='https://script.google.com/macros/s/AKfycbyZgN44kvVbPDKcdg6lVnJ-iT
 
 function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
-function fmtTime(t){if(!t||t==='-'||t==='')return '-';const[h,m]=String(t).split(':');const hh=+h;return(hh<12?'오전 ':'오후 ')+(hh===0?12:hh>12?hh-12:hh)+':'+m;}
+
+// 구글 시트에서 날짜/시간이 Date 객체로 오는 경우 처리
+function toDateStr(v){
+  if(!v)return '';
+  if(v instanceof Date){return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');}
+  return String(v);
+}
+function toTimeStr(v){
+  if(!v&&v!==0)return '';
+  if(v instanceof Date){return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');}
+  // 구글 시트 시간은 0~1 사이 소수로 올 수 있음
+  if(typeof v==='number'&&v>=0&&v<1){
+    const totalMins=Math.round(v*24*60);
+    const h=Math.floor(totalMins/60),m=totalMins%60;
+    return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  }
+  return String(v);
+}
+function fmtTime(t){
+  const s=toTimeStr(t);
+  if(!s||s==='-'||s==='')return '-';
+  const parts=s.split(':');
+  if(parts.length<2)return s;
+  const hh=+parts[0],mm=parts[1];
+  if(isNaN(hh))return s;
+  return(hh<12?'오전 ':'오후 ')+(hh===0?12:hh>12?hh-12:hh)+':'+mm;
+}
 function addMins(t,m){if(!t)return '';const[h,mn]=t.split(':').map(Number);const tot=h*60+mn+m;return String(Math.floor(tot/60)%24).padStart(2,'0')+':'+String(tot%60).padStart(2,'0');}
-function fmtDateTime(ts){const d=new Date(ts);return(d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}
+function fmtDateTime(ts){
+  if(!ts)return '';
+  const d=new Date(typeof ts==='number'?ts:+ts);
+  if(isNaN(d.getTime()))return String(ts);
+  return(d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');
+}
+
+// ── 구글 시트 데이터 정규화 ───────────────────────────────────────
+function normalizeRecord(r){
+  return {
+    ...r,
+    date: toDateStr(r.date),
+    arrive: toTimeStr(r.arrive),
+    depart: toTimeStr(r.depart),
+    btStart: toTimeStr(r.btStart),
+    btEnd: toTimeStr(r.btEnd),
+    taskNormal: r.taskNormal==='Y'||r.taskNormal===true,
+    taskSpecial: r.taskSpecial==='Y'||r.taskSpecial===true,
+    taskBooktalk: r.taskBooktalk==='Y'||r.taskBooktalk===true,
+  };
+}
 
 // ── API ──────────────────────────────────────────────────────────
 async function apiFetch(params){
@@ -416,8 +450,8 @@ async function syncAll(){
       apiFetch({action:'getMemos'})
     ]);
     if(sr.ok)students=sr.data||[];
-    if(rr.ok)records=(rr.data||[]).map(r=>({...r,taskNormal:r.taskNormal==='Y'||r.taskNormal===true,taskSpecial:r.taskSpecial==='Y'||r.taskSpecial===true,taskBooktalk:r.taskBooktalk==='Y'||r.taskBooktalk===true}));
-    if(mr.ok)memos=mr.data||[];
+    if(rr.ok)records=(rr.data||[]).map(normalizeRecord);
+    if(mr.ok)memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
     setBadge('ok','✓ 연결됨');
     updateLastSyncTime();
     renderStudents();
@@ -430,8 +464,8 @@ async function silentSync(){
   try{
     const [sr,rr,mr]=await Promise.all([apiFetch({action:'getStudents'}),apiFetch({action:'getRecords'}),apiFetch({action:'getMemos'})]);
     if(sr.ok)students=sr.data||[];
-    if(rr.ok)records=(rr.data||[]).map(r=>({...r,taskNormal:r.taskNormal==='Y'||r.taskNormal===true,taskSpecial:r.taskSpecial==='Y'||r.taskSpecial===true,taskBooktalk:r.taskBooktalk==='Y'||r.taskBooktalk===true}));
-    if(mr.ok)memos=mr.data||[];
+    if(rr.ok)records=(rr.data||[]).map(normalizeRecord);
+    if(mr.ok)memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
     setBadge('ok','✓ 연결됨');updateLastSyncTime();
     renderStudents();
     if(document.getElementById('pane-daily').classList.contains('active'))renderDaily();
@@ -595,12 +629,7 @@ async function saveDailyRecord(){
     id:uid(),date,studentId:sid,name:s.name,grade:s.grade,program:s.detail||s.program||'',
     arrive:document.getElementById('d-arrive').value,
     depart:document.getElementById('d-depart').value,
-    btStart:document.getElementById('d-bt-start').value,
-    btEnd:document.getElementById('d-bt-end').value,
-    taskNormal:document.getElementById('d-task-normal').checked,
-    taskSpecial:document.getElementById('d-task-special').checked,
-    taskBooktalk:document.getElementById('d-task-booktalk').checked,
-    memo:document.getElementById('d-memo').value
+    btStart:'',btEnd:'',taskNormal:false,taskSpecial:false,taskBooktalk:false,memo:''
   };
   records.push(rec);
   // 입력 필드 초기화
@@ -608,13 +637,11 @@ async function saveDailyRecord(){
   document.getElementById('d-student-id').value='';
   document.getElementById('d-grade').value='';
   document.getElementById('d-program').value='';
-  ['d-arrive','d-bt-start','d-bt-end','d-memo'].forEach(k=>document.getElementById(k).value='');
-  document.getElementById('d-depart').value='';document.getElementById('d-hint').textContent='';
-  document.getElementById('d-task-normal').checked=false;
-  document.getElementById('d-task-special').checked=false;
-  document.getElementById('d-task-booktalk').checked=false;
+  document.getElementById('d-arrive').value='';
+  document.getElementById('d-depart').value='';
+  document.getElementById('d-hint').textContent='';
   renderDaily();
-  await apiAction({action:'saveRecord',id:rec.id,date:rec.date,studentId:rec.studentId,name:rec.name,grade:rec.grade,program:rec.program,arrive:rec.arrive,depart:rec.depart,btStart:rec.btStart,btEnd:rec.btEnd,taskNormal:rec.taskNormal?'Y':'N',taskSpecial:rec.taskSpecial?'Y':'N',taskBooktalk:rec.taskBooktalk?'Y':'N',memo:rec.memo});
+  await apiAction({action:'saveRecord',id:rec.id,date:rec.date,studentId:rec.studentId,name:rec.name,grade:rec.grade,program:rec.program,arrive:rec.arrive,depart:rec.depart,btStart:'',btEnd:'',taskNormal:'N',taskSpecial:'N',taskBooktalk:'N',memo:''});
   setBadge('ok','✓ 저장됨');
 }
 function openRecordEdit(id){
@@ -688,13 +715,27 @@ function initHistory(){
   calYear=yr;calMonth=now.getMonth();
   renderHistory();
 }
-function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderHistory();}
-function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderHistory();}
+function calPrev(){
+  calMonth--;if(calMonth<0){calMonth=11;calYear--;}
+  document.getElementById('h-year').value=calYear;
+  document.getElementById('h-month').value=calMonth+1;
+  renderHistory();
+}
+function calNext(){
+  calMonth++;if(calMonth>11){calMonth=0;calYear++;}
+  document.getElementById('h-year').value=calYear;
+  document.getElementById('h-month').value=calMonth+1;
+  renderHistory();
+}
 function renderHistory(){
-  const yr=String(document.getElementById('h-year')?.value||calYear);
-  const mo=document.getElementById('h-month')?.value||'';
+  // 필터값과 달력 연월 동기화
+  const yrSel=document.getElementById('h-year');
+  const moSel=document.getElementById('h-month');
+  if(yrSel.value)calYear=+yrSel.value;
+  if(moSel.value)calMonth=+moSel.value-1;
+  const yr=String(calYear);
+  const mo=moSel?.value||'';
   const sid=document.getElementById('h-student')?.value||'';
-  // 달력은 calYear/calMonth 기준
   document.getElementById('cal-title').textContent=calYear+'년 '+(calMonth+1)+'월';
   // 달력 그리기
   const firstDay=new Date(calYear,calMonth,1).getDay();
@@ -823,7 +864,7 @@ function renderMemos(){
     if(fc&&m.category!==fc)return false;
     if(q&&!((m.content||'').toLowerCase().includes(q)||(m.author||'').toLowerCase().includes(q)))return false;
     return true;
-  });
+  }).sort((a,b)=>Number(b.ts)-Number(a.ts));
   document.getElementById('m-count').textContent=list.length+'건';
   const el=document.getElementById('m-list');
   if(!list.length){el.innerHTML='';document.getElementById('m-empty').style.display='block';return;}
