@@ -421,7 +421,13 @@ async function syncAll(){
     }
   }catch(e){sb('err','연결 오류');}
 }
+let lastSaveTime=0; // 마지막 저장 시각
+
 async function silentSync(){
+  // 모달 열려있으면 동기화 스킵
+  if(document.querySelector('.ov.open')) return;
+  // 저장 후 10초 이내면 동기화 스킵 (저장 완료 대기)
+  if(Date.now()-lastSaveTime < 10000) return;
   try{
     const[sr,rr,mr]=await Promise.all([apig({action:'getStudents'}),apig({action:'getRecords'}),apig({action:'getMemos'})]);
     if(sr.ok)students=sr.data||[];
@@ -587,7 +593,7 @@ async function saveRec(){
     arrive:document.getElementById('d-arrive').value,depart:document.getElementById('d-dep').value,
     btStart:'',btEnd:'',taskNormal:false,taskSpecial:false,taskBooktalk:false,memo:''};
   records.push(rec);
-  document.getElementById('d-sq').value='';document.getElementById('d-sid').value='';
+  lastSaveTime=Date.now();document.getElementById('d-sid').value='';
   document.getElementById('d-grade').value='';document.getElementById('d-prog').value='';
   document.getElementById('d-arrive').value='';document.getElementById('d-dep').value='';
   document.getElementById('d-hint').textContent='';
@@ -623,7 +629,7 @@ async function updRec(){
     taskSpecial:document.getElementById('r-ts').checked,
     taskBooktalk:document.getElementById('r-tb').checked,
     memo:document.getElementById('r-memo').value};
-  close('rm');RD();
+  close('rm');RD();lastSaveTime=Date.now();
   const r=records[i];
   await apia({action:'updateRecord',id:r.id,arrive:r.arrive,depart:r.depart,
     btStart:r.btStart,btEnd:r.btEnd,taskNormal:r.taskNormal?'Y':'N',
@@ -632,7 +638,7 @@ async function updRec(){
 }
 async function delRec(id){
   if(!confirm('삭제하시겠습니까?'))return;
-  records=records.filter(x=>x.id!==id);RD();
+  records=records.filter(x=>x.id!==id);lastSaveTime=Date.now();RD();
   await apia({action:'deleteRecord',id});sb('ok','✓ 저장됨');
 }
 function RD(){
