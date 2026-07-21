@@ -50,6 +50,22 @@ tr:hover td{background:#fafafa}
 .tbadge.n{background:#E6F1FB;color:#185FA5}.tbadge.s{background:#FAEEDA;color:#854F0B}
 .tbadge.b{background:#EAF3DE;color:#3B6D11}
 .dv{color:#A32D2D;font-weight:600}
+/* 출결 카운팅 */
+.att-bar{display:flex;align-items:center;gap:6px;min-width:120px}
+.att-bg{flex:1;height:7px;border-radius:4px;background:#eee;overflow:hidden}
+.att-fill{height:100%;border-radius:4px;transition:width .3s}
+.att-fill.ok{background:#3B6D11}
+.att-fill.warn{background:#854F0B}
+.att-fill.danger{background:#A32D2D}
+.att-txt{font-size:12px;font-weight:600;white-space:nowrap}
+.att-txt.ok{color:#3B6D11}.att-txt.warn{color:#854F0B}.att-txt.danger{color:#A32D2D}
+.warn-banner{background:#FAEEDA;border:1px solid #F5C842;border-radius:10px;padding:.75rem 1rem;margin-bottom:1rem}
+.warn-banner h4{font-size:12px;font-weight:600;color:#854F0B;margin-bottom:.5rem}
+.danger-banner{background:#FCEBEB;border:1px solid #F09595;border-radius:10px;padding:.75rem 1rem;margin-bottom:.75rem}
+.danger-banner h4{font-size:12px;font-weight:600;color:#A32D2D;margin-bottom:.5rem}
+.alert-student{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;margin:2px;cursor:pointer}
+.alert-student.warn{background:#FAEEDA;color:#854F0B;border:1px solid #F5C842}
+.alert-student.danger{background:#FCEBEB;color:#A32D2D;border:1px solid #F09595}
 .empty{text-align:center;padding:2.5rem;color:#aaa}
 .empty span{font-size:28px;display:block;margin-bottom:.5rem}
 .ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;align-items:center;justify-content:center}
@@ -144,6 +160,7 @@ tr:hover td{background:#fafafa}
     <div class="stat"><div class="stat-lbl">65분 과정</div><div class="stat-val green" id="st-65">0</div></div>
     <div class="stat"><div class="stat-lbl">95분 과정</div><div class="stat-val amber" id="st-95">0</div></div>
   </div>
+  <div id="s-alert-area"></div>
   <div class="toolbar">
     <input type="text" id="s-q" placeholder="이름·연락처 검색..." oninput="RS()">
     <select id="s-grade" onchange="RS()">
@@ -160,7 +177,7 @@ tr:hover td{background:#fafafa}
   </div>
   <div class="tw">
     <table style="min-width:680px">
-      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>세부</th><th>연락처</th><th>기타</th><th>관리</th></tr></thead>
+      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>세부</th><th>이번달 출결</th><th>연락처</th><th>기타</th><th>관리</th></tr></thead>
       <tbody id="s-tb"></tbody>
     </table>
     <div class="empty" id="s-em" style="display:none"><span>👥</span>등록된 원생이 없습니다</div>
@@ -211,6 +228,7 @@ tr:hover td{background:#fafafa}
 
 <!-- ③ 메모/업무일지 -->
 <div id="pane-memo" class="tab-pane">
+  <div id="m-alert-area" style="margin-bottom:.75rem"></div>
   <div class="mwrite">
     <h3>✏️ 새 메모 작성</h3>
     <div class="fg2" style="margin-bottom:.75rem">
@@ -447,6 +465,89 @@ function toggleAuto(){const on=document.getElementById('auto-chk').checked;if(on
 function startAuto(){stopAuto();timer=setInterval(()=>{if(!document.querySelector('.ov.open'))silentSync();},30000);}
 function stopAuto(){if(timer){clearInterval(timer);timer=null;}}
 
+// ── 출결 카운팅 ───────────────────────────────────────────────────
+const MONTHLY_QUOTA={
+  '65분 주1회':4,'65분 주2회':8,'65분 주3회':12,'65분 주5회':20,
+  '95분 주1회':4,'95분 주2회':8,'95분 주3회':12,'95분 주5회':20,
+  '방학특강 15회':15  // 전체 기준
+};
+
+function getQuota(detail){
+  return MONTHLY_QUOTA[detail]||0;
+}
+
+// 학생별 이번달 출석 횟수 계산
+function getMonthlyCount(studentId){
+  const now=new Date();
+  const ym=now.getFullYear()+'-'+p2(now.getMonth()+1);
+  return records.filter(r=>r.studentId===studentId&&String(r.date||'').startsWith(ym)).length;
+}
+
+// 방학특강은 전체 누적
+function getTotalCount(studentId){
+  return records.filter(r=>r.studentId===studentId).length;
+}
+
+function attInfo(s){
+  const quota=getQuota(s.detail);
+  if(!quota) return null;
+  const isSpecial=s.detail==='방학특강 15회';
+  const count=isSpecial?getTotalCount(s.id):getMonthlyCount(s.id);
+  const remain=quota-count;
+  let level='ok';
+  if(remain<=1) level='danger';
+  else if(remain<=2) level='warn';
+  return {count,quota,remain,level,isSpecial};
+}
+
+function attBar(s){
+  const info=attInfo(s);
+  if(!info) return '-';
+  const pct=Math.min(100,Math.round(info.count/info.quota*100));
+  const label=info.isSpecial?`전체 ${info.count}/${info.quota}회`:`${info.count}/${info.quota}회`;
+  const remainTxt=info.remain>0?` (${info.remain}회 남음)`:'완료';
+  return `<div class="att-bar">
+    <div class="att-bg"><div class="att-fill ${info.level}" style="width:${pct}%"></div></div>
+    <span class="att-txt ${info.level}">${label}${remainTxt}</span>
+  </div>`;
+}
+
+// 경고 학생 목록 반환
+function getAlertStudents(){
+  const warn=[],danger=[];
+  students.forEach(s=>{
+    const info=attInfo(s);
+    if(!info)return;
+    if(info.level==='danger') danger.push({s,info});
+    else if(info.level==='warn') warn.push({s,info});
+  });
+  return {warn,danger};
+}
+
+function renderAlertBanner(containerId){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  const{warn,danger}=getAlertStudents();
+  let html='';
+  if(danger.length){
+    html+=`<div class="danger-banner"><h4>🚨 1회 남은 학생 (학부모 연락 필요)</h4><div>`;
+    danger.forEach(({s,info})=>{
+      const label=info.isSpecial?`전체 ${info.count}/${info.quota}회`:`이번달 ${info.count}/${info.quota}회`;
+      html+=`<span class="alert-student danger" onclick="ST('students')">${s.name} (${s.grade}) — ${label}</span>`;
+    });
+    html+=`</div></div>`;
+  }
+  if(warn.length){
+    html+=`<div class="warn-banner"><h4>⚠️ 2회 남은 학생</h4><div>`;
+    warn.forEach(({s,info})=>{
+      const label=info.isSpecial?`전체 ${info.count}/${info.quota}회`:`이번달 ${info.count}/${info.quota}회`;
+      html+=`<span class="alert-student warn" onclick="ST('students')">${s.name} (${s.grade}) — ${label}</span>`;
+    });
+    html+=`</div></div>`;
+  }
+  el.innerHTML=html;
+}
+
 // ── 공통 ─────────────────────────────────────────────────────────
 function close(id){document.getElementById(id).classList.remove('open');}
 function mbadge(p){
@@ -529,6 +630,7 @@ function RS(){
   document.getElementById('st-total').textContent=students.length;
   document.getElementById('st-65').textContent=students.filter(s=>s.program==='65분').length;
   document.getElementById('st-95').textContent=students.filter(s=>s.program==='95분'||s.program==='방학특강').length;
+  renderAlertBanner('s-alert-area');
   let list=students.filter(s=>{
     if(fg&&s.grade!==fg)return false;if(fp&&s.program!==fp)return false;if(fd&&s.detail!==fd)return false;
     if(q&&!((s.name||'').toLowerCase().includes(q)||(s.phone||'').includes(q)))return false;return true;
@@ -540,6 +642,7 @@ function RS(){
     <td style="font-weight:600">${s.name}</td><td>${s.grade||'-'}</td>
     <td>${mbadge(s.program)}</td>
     <td>${s.detail?'<span class="badge pu">'+s.detail+'</span>':'-'}</td>
+    <td>${attBar(s)}</td>
     <td>${s.phone||'-'}</td>
     <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888">${s.memo||'-'}</td>
     <td style="white-space:nowrap">
@@ -697,6 +800,7 @@ async function delMemo(id){
   await apia({action:'deleteMemo',id});sb('ok','✓ 저장됨');
 }
 function RM(){
+  renderAlertBanner('m-alert-area');
   const q=(document.getElementById('m-q').value||'').toLowerCase();
   const fc=document.getElementById('m-fc').value;
   const list=memos.filter(m=>{
