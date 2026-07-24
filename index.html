@@ -444,6 +444,16 @@ function addM(t,m){if(!t)return '';const[h,mn]=t.split(':').map(Number);const to
 // ── API ──────────────────────────────────────────────────────────
 async function apig(params){const r=await fetch(API+'?'+new URLSearchParams(params));return r.json();}
 async function apia(params){const r=await fetch(API+'?'+new URLSearchParams(params));return r.json();}
+// 메모처럼 긴 텍스트는 POST로 전송
+async function apipost(body){
+  const r=await fetch(API,{
+    method:'POST',
+    redirect:'follow',
+    headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify(body)
+  });
+  return r.json();
+}
 function sb(s,t){const e=document.getElementById('sbadge');e.textContent=t;e.className='badge-sync '+s;}
 function uls(){const e=document.getElementById('last-sync');const d=new Date();e.textContent='마지막: '+d.getHours()+':'+p2(d.getMinutes())+':'+p2(d.getSeconds());}
 
@@ -477,8 +487,8 @@ let lastSaveTime=0; // 마지막 저장 시각
 async function silentSync(){
   // 모달 열려있으면 동기화 스킵
   if(document.querySelector('.ov.open')) return;
-  // 저장 후 10초 이내면 동기화 스킵 (저장 완료 대기)
-  if(Date.now()-lastSaveTime < 10000) return;
+  // 저장 후 30초 이내면 동기화 스킵 (저장 완료 대기)
+  if(Date.now()-lastSaveTime < 30000) return;
   try{
     const[sr,rr,mr]=await Promise.all([apig({action:'getStudents'}),apig({action:'getRecords'}),apig({action:'getMemos'})]);
     if(sr.ok)students=sr.data||[];
@@ -666,7 +676,7 @@ async function saveStu(){
     memo:document.getElementById('f-memo').value};
 
   if(editSid){const i=students.findIndex(x=>x.id===editSid);students[i]=s;}else students.push(s);
-  close('sm');RS();
+  close('sm');lastSaveTime=Date.now();RS();
 
   await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,program:s.program,
     detail:s.detail,phone:s.phone,enrollDate:s.enrollDate||'',memo:s.memo});
@@ -903,7 +913,7 @@ async function resetCount(id, name){
   const i=students.findIndex(x=>x.id===id);
   if(i<0) return;
   students[i]={...students[i], enrollDate:todayStr()};
-  RATT(); RS();
+  lastSaveTime=Date.now();RATT();RS();
   await apia({action:'saveStudent',id:students[i].id,name:students[i].name,
     grade:students[i].grade,program:students[i].program,detail:students[i].detail,
     phone:students[i].phone,enrollDate:todayStr(),memo:students[i].memo});
@@ -916,7 +926,7 @@ async function togglePayment(id){
   if(i<0) return;
   const newPaid=students[i].paid==='Y'?'N':'Y';
   students[i]={...students[i], paid:newPaid};
-  RATT(); RS();
+  lastSaveTime=Date.now();RATT();RS();
   await apia({action:'saveStudent',id:students[i].id,name:students[i].name,
     grade:students[i].grade,program:students[i].program,detail:students[i].detail,
     phone:students[i].phone,enrollDate:students[i].enrollDate||'',
@@ -931,9 +941,10 @@ async function saveMemo(){
   const m={id:uid(),ts:String(Date.now()),author:document.getElementById('m-auth').value.trim()||'익명',
     category:document.getElementById('m-cat').value,content};
   memos.unshift(m);
+  lastSaveTime=Date.now();
   document.getElementById('m-cont').value='';
   RM();
-  await apia({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,content:encodeURIComponent(m.content)});
+  await apipost({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,content:m.content});
   sb('ok','✓ 저장됨');
 }
 function openMM(id){
@@ -949,14 +960,14 @@ async function updMemo(){
   const i=memos.findIndex(x=>x.id===id);if(i<0)return;
   memos[i]={...memos[i],author:document.getElementById('me-auth').value,
     category:document.getElementById('me-cat').value,content:document.getElementById('me-cont').value};
-  close('mm');RM();
+  close('mm');lastSaveTime=Date.now();RM();
   const m=memos[i];
-  await apia({action:'updateMemo',id:m.id,author:m.author,category:m.category,content:encodeURIComponent(m.content)});
+  await apipost({action:'updateMemo',id:m.id,author:m.author,category:m.category,content:m.content});
   sb('ok','✓ 저장됨');
 }
 async function delMemo(id){
   if(!confirm('삭제하시겠습니까?'))return;
-  memos=memos.filter(x=>x.id!==id);RM();
+  memos=memos.filter(x=>x.id!==id);lastSaveTime=Date.now();RM();
   await apia({action:'deleteMemo',id});sb('ok','✓ 저장됨');
 }
 function RM(){
