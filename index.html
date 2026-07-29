@@ -441,10 +441,14 @@ function fdt(ts){
 }
 function addM(t,m){if(!t)return '';const[h,mn]=t.split(':').map(Number);const tot=h*60+mn+m;return p2(Math.floor(tot/60)%24)+':'+p2(tot%60);}
 
+// Base64 인코딩 (한글 포함 긴 텍스트 GET 전송용)
+function b64enc(str){
+  try{return btoa(unescape(encodeURIComponent(str)));}catch(e){return encodeURIComponent(str);}
+}
+
 // ── API ──────────────────────────────────────────────────────────
 async function apig(params){const r=await fetch(API+'?'+new URLSearchParams(params));return r.json();}
 async function apia(params){const r=await fetch(API+'?'+new URLSearchParams(params));return r.json();}
-// 메모처럼 긴 텍스트는 POST로 전송
 async function apipost(body){
   const r=await fetch(API,{
     method:'POST',
@@ -487,20 +491,20 @@ let lastSaveTime=0; // 마지막 저장 시각
 async function silentSync(){
   // 모달 열려있으면 동기화 스킵
   if(document.querySelector('.ov.open')) return;
-  // 저장 후 30초 이내면 동기화 스킵 (저장 완료 대기)
+  // 저장 후 30초 이내면 동기화 스킵
   if(Date.now()-lastSaveTime < 30000) return;
   try{
-    const[sr,rr,mr]=await Promise.all([apig({action:'getStudents'}),apig({action:'getRecords'}),apig({action:'getMemos'})]);
-    if(sr.ok)students=sr.data||[];
-    if(rr.ok)records=(rr.data||[]).map(normRec);
-    if(mr.ok)memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
+    const[sr,rr]=await Promise.all([apig({action:'getStudents'}),apig({action:'getRecords'})]);
+    if(sr.ok) students=sr.data||[];
+    if(rr.ok) records=(rr.data||[]).map(normRec);
+    // 메모는 자동 동기화로 절대 덮어쓰지 않음 — 탭 클릭 시에만 갱신
     sb('ok','✓ 연결됨');uls();
     RS();
     const ap=document.querySelector('.tab-pane.active');
     if(ap){
-      if(ap.id==='pane-daily')RD();
-      if(ap.id==='pane-history')IH();
-      if(ap.id==='pane-memo')RM();
+      if(ap.id==='pane-daily') RD();
+      if(ap.id==='pane-history') IH();
+      if(ap.id==='pane-attend') RATT();
     }
   }catch(e){}
 }
@@ -619,10 +623,16 @@ function ST(t){
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',tabs[i]===t));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('pane-'+t).classList.add('active');
-  if(t==='daily')RD();
-  if(t==='history')IH();
-  if(t==='memo')RM();
-  if(t==='attend')RATT();
+  if(t==='daily') RD();
+  if(t==='history') IH();
+  if(t==='attend') RATT();
+  if(t==='memo'){
+    // 메모 탭 클릭 시 항상 서버에서 새로 불러오기
+    apig({action:'getMemos'}).then(mr=>{
+      if(mr.ok && mr.data) memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
+      RM();
+    }).catch(()=>RM());
+  }
 }
 
 // ── 원생 정보 ────────────────────────────────────────────────────
@@ -944,7 +954,7 @@ async function saveMemo(){
   lastSaveTime=Date.now();
   document.getElementById('m-cont').value='';
   RM();
-  await apipost({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,content:m.content});
+  await apia({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,content:b64enc(m.content)});
   sb('ok','✓ 저장됨');
 }
 function openMM(id){
@@ -962,7 +972,7 @@ async function updMemo(){
     category:document.getElementById('me-cat').value,content:document.getElementById('me-cont').value};
   close('mm');lastSaveTime=Date.now();RM();
   const m=memos[i];
-  await apipost({action:'updateMemo',id:m.id,author:m.author,category:m.category,content:m.content});
+  await apia({action:'updateMemo',id:m.id,author:m.author,category:m.category,content:b64enc(m.content)});
   sb('ok','✓ 저장됨');
 }
 async function delMemo(id){
