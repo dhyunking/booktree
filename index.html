@@ -485,18 +485,11 @@ function normRec(r){
 async function syncAll(){
   sb('loading','동기화 중...');
   try{
-    const[sr,rr,mr]=await Promise.all([apig({action:'getStudents'}),apig({action:'getRecords'}),apig({action:'getMemos'})]);
+    const[sr,rr]=await Promise.all([apig({action:'getStudents'}),apig({action:'getRecords'})]);
     if(sr.ok)students=sr.data||[];
     if(rr.ok)records=(rr.data||[]).map(normRec);
-    if(mr.ok)memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
     sb('ok','✓ 연결됨');uls();
     RS();
-    const ap=document.querySelector('.tab-pane.active');
-    if(ap){
-      if(ap.id==='pane-daily')RD();
-      if(ap.id==='pane-history')IH();
-      if(ap.id==='pane-memo')RM();
-    }
   }catch(e){sb('err','연결 오류');}
 }
 let lastSaveTime=0; // 마지막 저장 시각
@@ -1228,11 +1221,32 @@ function expH(){
 document.getElementById('today-date').textContent=NOW.getFullYear()+'년 '+(NOW.getMonth()+1)+'월 '+NOW.getDate()+'일 ('+DAYS[NOW.getDay()]+')';
 document.getElementById('ddate').value=todayStr();
 updLabel();
-// 앱 시작 시 메모 탭부터
-syncAll().then(()=>{
+
+// API 타임아웃 안전장치 (10초 초과 시 에러 처리)
+async function apigSafe(params){
+  return Promise.race([
+    apig(params),
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),10000))
+  ]);
+}
+
+// 초기 로딩 — 학생/기록 먼저, 메모는 탭 진입 시
+(async()=>{
+  sb('loading','연결 중...');
+  try{
+    const[sr,rr]=await Promise.all([apigSafe({action:'getStudents'}),apigSafe({action:'getRecords'})]);
+    if(sr.ok)students=sr.data||[];
+    if(rr.ok)records=(rr.data||[]).map(normRec);
+    sb('ok','✓ 연결됨');uls();
+    RS();
+  }catch(e){
+    sb('err','연결 오류 — 새로고침 버튼을 눌러주세요');
+  }
+  // 메모 탭으로 이동 (여기서 getMemos 호출됨)
   ST('memo');
   startAuto();
-});
+})();
+
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')silentSync();});
 </script>
 </body>
