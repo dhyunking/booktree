@@ -178,7 +178,7 @@ tr:hover td{background:#fafafa}
   </div>
   <div class="tw">
     <table style="min-width:680px">
-      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>세부</th><th>이번달 출결</th><th>연락처</th><th>기타</th><th>관리</th></tr></thead>
+      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>세부</th><th>상태</th><th>출결</th><th>연락처</th><th>기타</th><th>관리</th></tr></thead>
       <tbody id="s-tb"></tbody>
     </table>
     <div class="empty" id="s-em" style="display:none"><span>👥</span>등록된 원생이 없습니다</div>
@@ -363,6 +363,12 @@ tr:hover td{background:#fafafa}
       </div>
       <div class="fg"><label>학부모 연락처</label><input type="tel" id="f-phone" placeholder="010-0000-0000"></div>
       <div class="fg"><label>입원일 <span style="font-size:10px;color:#888">(재등록 시 변경하면 카운팅 리셋)</span></label><input type="date" id="f-enroll"></div>
+      <hr class="sep" style="grid-column:1/-1;border:none;border-top:1px solid #f0f0f0;margin:4px 0">
+      <div class="fg"><label>휴원 시작일</label><input type="date" id="f-leave-start"></div>
+      <div class="fg"><label>휴원 종료일</label><input type="date" id="f-leave-end"></div>
+      <div class="fg full"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="f-on-leave" style="width:15px;height:15px"> 현재 휴원 중
+      </label></div>
       <div class="fg full"><label>기타 사항</label><textarea id="f-memo"></textarea></div>
     </div>
     <div class="mf">
@@ -608,6 +614,28 @@ function renderAlertBanner(containerId){
   el.innerHTML=html;
 }
 
+// ── 휴원 상태 체크 ────────────────────────────────────────────────
+function isOnLeave(s){
+  const today=todayStr();
+  // 수동 휴원 토글
+  if(s.onLeave==='Y') return true;
+  // 날짜 범위 기반 자동 판단
+  if(s.leaveStart && s.leaveEnd){
+    return today >= s.leaveStart && today <= s.leaveEnd;
+  }
+  if(s.leaveStart && !s.leaveEnd){
+    return today >= s.leaveStart;
+  }
+  return false;
+}
+function leaveBadge(s){
+  if(isOnLeave(s)){
+    const end=s.leaveEnd?` ~ ${s.leaveEnd}`:'';
+    return `<span class="badge" style="background:#E8E8E8;color:#555;border:1px solid #ccc">🔴 휴원${end}</span>`;
+  }
+  return `<span class="badge gn">🟢 재원</span>`;
+}
+
 // ── 공통 ─────────────────────────────────────────────────────────
 function close(id){document.getElementById(id).classList.remove('open');}
 function mbadge(p){
@@ -665,6 +693,9 @@ function openSM(id){
     document.getElementById('f-det').value=s.detail||'';
     document.getElementById('f-phone').value=s.phone||'';
     document.getElementById('f-enroll').value=s.enrollDate||'';
+    document.getElementById('f-leave-start').value=s.leaveStart||'';
+    document.getElementById('f-leave-end').value=s.leaveEnd||'';
+    document.getElementById('f-on-leave').checked=s.onLeave==='Y';
     document.getElementById('f-memo').value=s.memo||'';
   }else{
     ['f-name','f-phone','f-memo'].forEach(k=>document.getElementById(k).value='');
@@ -672,6 +703,9 @@ function openSM(id){
     document.getElementById('f-det').innerHTML='<option value="">전체 프로그램 먼저 선택</option>';
     document.getElementById('f-det').disabled=true;
     document.getElementById('f-enroll').value=todayStr();
+    document.getElementById('f-leave-start').value='';
+    document.getElementById('f-leave-end').value='';
+    document.getElementById('f-on-leave').checked=false;
   }
   document.getElementById('sm').classList.add('open');
 }
@@ -686,13 +720,18 @@ async function saveStu(){
     program:document.getElementById('f-prog').value,detail:document.getElementById('f-det').value,
     phone:document.getElementById('f-phone').value,
     enrollDate:newEnroll,
+    leaveStart:document.getElementById('f-leave-start').value,
+    leaveEnd:document.getElementById('f-leave-end').value,
+    onLeave:document.getElementById('f-on-leave').checked?'Y':'N',
     memo:document.getElementById('f-memo').value};
 
   if(editSid){const i=students.findIndex(x=>x.id===editSid);students[i]=s;}else students.push(s);
   close('sm');lastSaveTime=Date.now();RS();
 
   await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,program:s.program,
-    detail:s.detail,phone:s.phone,enrollDate:s.enrollDate||'',memo:s.memo});
+    detail:s.detail,phone:s.phone,enrollDate:s.enrollDate||'',
+    leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
+    memo:s.memo});
 
   // 입원일이 변경됐으면 해당 학생의 이전 출석기록 카운팅 리셋 (enrollDate 이전 기록 제외)
   if(enrollChanged && newEnroll){
@@ -713,9 +752,9 @@ function RS(){
   const fg=document.getElementById('s-grade').value;
   const fp=document.getElementById('s-prog').value;
   const fd=document.getElementById('s-det').value;
-  document.getElementById('st-total').textContent=students.length;
-  document.getElementById('st-65').textContent=students.filter(s=>s.program==='65분').length;
-  document.getElementById('st-95').textContent=students.filter(s=>s.program==='95분'||s.program==='방학특강').length;
+  document.getElementById('st-total').textContent=students.filter(s=>!isOnLeave(s)).length;
+  document.getElementById('st-65').textContent=students.filter(s=>s.program==='65분'&&!isOnLeave(s)).length;
+  document.getElementById('st-95').textContent=students.filter(s=>(s.program==='95분'||s.program==='방학특강')&&!isOnLeave(s)).length;
   renderAlertBanner('s-alert-area');
   let list=students.filter(s=>{
     if(fg&&s.grade!==fg)return false;if(fp&&s.program!==fp)return false;if(fd&&s.detail!==fd)return false;
@@ -724,10 +763,11 @@ function RS(){
   const tb=document.getElementById('s-tb');
   if(!list.length){tb.innerHTML='';document.getElementById('s-em').style.display='block';return;}
   document.getElementById('s-em').style.display='none';
-  tb.innerHTML=list.map(s=>`<tr>
+  tb.innerHTML=list.map(s=>`<tr style="${isOnLeave(s)?'opacity:0.6;background:#f5f5f5':''}">
     <td style="font-weight:600">${s.name}</td><td>${s.grade||'-'}</td>
     <td>${mbadge(s.program)}</td>
     <td>${s.detail?'<span class="badge pu">'+s.detail+'</span>':'-'}</td>
+    <td>${leaveBadge(s)}</td>
     <td>${attBar(s)}</td>
     <td>${s.phone||'-'}</td>
     <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888">${s.memo||'-'}</td>
@@ -748,7 +788,7 @@ function fSD(){
   const q=(document.getElementById('d-sq').value||'').toLowerCase();
   const dd=document.getElementById('d-sd');
   const curId=document.getElementById('d-sid').value;
-  const list=students.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.grade||'').includes(q));
+  const list=students.filter(s=>!isOnLeave(s)&&((s.name||'').toLowerCase().includes(q)||(s.grade||'').includes(q)));
   if(!list.length){dd.innerHTML='<div class="so" style="color:#aaa">검색 결과 없음</div>';dd.classList.add('open');return;}
   dd.innerHTML=list.map(s=>`<div class="so${s.id===curId?' sel':''}" onclick="selStu('${s.id}','${s.name.replace(/'/g,"\\'")}')">
     ${s.name} <span style="color:#888;font-size:11px">${s.grade||''} ${s.detail||s.program||''}</span></div>`).join('');
@@ -778,7 +818,9 @@ function fMSD(){
   dd.innerHTML=
     '<div class="so" style="color:#888;font-size:12px" onclick="clearMStudent()">✕ 선택 안함</div>'+
     list.map(s=>`<div class="so${s.id===curId?' sel':''}" onclick="selMStu('${s.id}','${s.name.replace(/'/g,"\\'")}')">
-      ${s.name} <span style="color:#888;font-size:11px">${s.grade||''}</span></div>`).join('');
+      ${s.name} <span style="color:#888;font-size:11px">${s.grade||''}</span>
+      ${isOnLeave(s)?'<span style="font-size:10px;color:#A32D2D;margin-left:4px">휴원중</span>':''}
+    </div>`).join('');
   dd.classList.add('open');
 }
 function selMStu(id,name){
@@ -891,6 +933,8 @@ function RATT(){
 
   const filter=document.getElementById('att-filter').value;
   let list=students.filter(s=>getQuota(s.detail)>0);
+  const leaveList=list.filter(s=>isOnLeave(s));
+  list=list.filter(s=>!isOnLeave(s));
 
   if(filter){
     list=list.filter(s=>{
@@ -949,6 +993,21 @@ function RATT(){
       </td>
     </tr>`;
   }).join('');
+
+  // 휴원생 별도 표시
+  if(leaveList.length){
+    tb.innerHTML += `<tr><td colspan="10" style="padding:8px 12px;background:#f0f0f0;font-size:12px;font-weight:600;color:#666">
+      🔴 휴원 중 (${leaveList.length}명) — 출결 카운팅 제외
+    </td></tr>`;
+    tb.innerHTML += leaveList.map(s=>`<tr style="opacity:0.55;background:#f8f8f8">
+      <td style="font-weight:600">${s.name}</td>
+      <td>${s.grade||'-'}</td>
+      <td><span class="badge pu" style="font-size:11px">${s.detail||'-'}</span></td>
+      <td style="font-size:12px;color:#888">${s.enrollDate||'-'}</td>
+      <td colspan="5" style="color:#888;font-size:12px">휴원 기간: ${s.leaveStart||'?'} ~ ${s.leaveEnd||'복귀 시'}</td>
+      <td><button class="btn sm" onclick="openSM('${s.id}')">✏️ 복귀설정</button></td>
+    </tr>`).join('');
+  }
 }
 
 // 수동 리셋 — 입원일을 오늘로 변경해서 이전 기록 카운팅 제외
