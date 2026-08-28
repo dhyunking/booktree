@@ -147,15 +147,15 @@ tr:hover td{background:#fafafa}
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" onclick="ST('students')">👥 원생 정보</button>
+  <button class="tab-btn active" onclick="ST('memo')">📝 메모/업무일지</button>
+  <button class="tab-btn" onclick="ST('students')">👥 원생 정보</button>
   <button class="tab-btn" onclick="ST('daily')">📋 일일 출석부</button>
-  <button class="tab-btn" onclick="ST('memo')">📝 메모/업무일지</button>
   <button class="tab-btn" onclick="ST('attend')">📊 출결현황</button>
   <button class="tab-btn" onclick="ST('history')">📅 월별 히스토리</button>
 </div>
 
-<!-- ① 원생 정보 -->
-<div id="pane-students" class="tab-pane active">
+<!-- ② 원생 정보 -->
+<div id="pane-students" class="tab-pane">
   <div class="stats">
     <div class="stat"><div class="stat-lbl">총 재원생</div><div class="stat-val blue" id="st-total">0</div></div>
     <div class="stat"><div class="stat-lbl">65분 과정</div><div class="stat-val green" id="st-65">0</div></div>
@@ -220,15 +220,15 @@ tr:hover td{background:#fafafa}
   </div>
   <div class="tw">
     <table style="min-width:780px">
-      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>등원</th><th>북토크 시작</th><th>북토크 종료</th><th>해야할 일</th><th>하원</th><th>메모</th><th>관리</th></tr></thead>
+      <thead><tr><th>이름</th><th>학년</th><th>프로그램</th><th>등원</th><th>북토크 시작</th><th>북토크 종료</th><th>활동 완료</th><th>하원</th><th>메모</th><th>관리</th></tr></thead>
       <tbody id="d-tb"></tbody>
     </table>
     <div class="empty" id="d-em" style="display:none"><span>📋</span>출석 기록이 없습니다</div>
   </div>
 </div>
 
-<!-- ③ 메모/업무일지 -->
-<div id="pane-memo" class="tab-pane">
+<!-- ① 메모/업무일지 (첫 탭) -->
+<div id="pane-memo" class="tab-pane active">
   <div id="m-alert-area" style="margin-bottom:.75rem"></div>
   <div class="mwrite">
     <h3>✏️ 새 메모 작성</h3>
@@ -238,6 +238,11 @@ tr:hover td{background:#fafafa}
         <select id="m-cat">
           <option value="공지">📢 공지</option><option value="업무">📌 업무</option>
           <option value="학생관련">👤 학생관련</option><option value="기타">💬 기타</option>
+        </select>
+      </div>
+      <div class="fg"><label>관련 학생 <span style="font-size:10px;color:#888">(선택사항)</span></label>
+        <select id="m-student">
+          <option value="">학생 선택 안함</option>
         </select>
       </div>
       <div class="fg full"><label>내용</label><textarea id="m-cont" placeholder="내용을 입력하세요..." style="min-height:72px"></textarea></div>
@@ -251,11 +256,16 @@ tr:hover td{background:#fafafa}
       <option value="공지">📢 공지</option><option value="업무">📌 업무</option>
       <option value="학생관련">👤 학생관련</option><option value="기타">💬 기타</option>
     </select>
+    <select id="m-fs" onchange="RM()">
+      <option value="">전체 학생</option>
+    </select>
     <span id="m-cnt" style="font-size:12px;color:#888"></span>
   </div>
   <div id="m-list"></div>
   <div class="empty" id="m-em" style="display:none"><span>📝</span>작성된 메모가 없습니다</div>
 </div>
+
+<!-- ② 원생 정보 -->
 
 <!-- ④ 출결현황 -->
 <div id="pane-attend" class="tab-pane">
@@ -318,7 +328,7 @@ tr:hover td{background:#fafafa}
   </div>
   <div class="tw">
     <table style="min-width:820px">
-      <thead><tr><th>날짜</th><th>이름</th><th>학년</th><th>프로그램</th><th>등원</th><th>북토크 시작</th><th>북토크 종료</th><th>해야할 일</th><th>하원</th><th>메모</th></tr></thead>
+      <thead><tr><th>날짜</th><th>이름</th><th>학년</th><th>프로그램</th><th>등원</th><th>북토크 시작</th><th>북토크 종료</th><th>활동 완료</th><th>하원</th><th>메모</th></tr></thead>
       <tbody id="h-tb"></tbody>
     </table>
     <div class="empty" id="h-em" style="display:none"><span>📅</span>기록이 없습니다</div>
@@ -431,7 +441,7 @@ function ftm(t){
   if(pts.length<2)return '-';
   const hh=+pts[0],mm=pts[1];
   if(isNaN(hh))return '-';
-  return(hh<12?'오전 ':'오후 ')+(hh===0?12:hh>12?hh-12:hh)+':'+mm;
+  return p2(hh)+':'+mm;
 }
 function fdt(ts){
   if(!ts)return '';
@@ -526,12 +536,16 @@ function getQuota(detail){
 // 학생별 이번달 출석 횟수 계산 (입원일 이후 기록만)
 function getMonthlyCount(studentId, enrollDate){
   const now=new Date();
-  const ym=now.getFullYear()+'-'+p2(now.getMonth()+1);
+  const curY=now.getFullYear();
+  const curM=now.getMonth()+1;
   return records.filter(r=>{
-    if(r.studentId!==studentId) return false;
+    if(String(r.studentId||'')!==String(studentId)) return false;
     const ds=String(r.date||'').trim();
-    if(!ds.startsWith(ym)) return false;
-    if(enrollDate && ds < enrollDate) return false;
+    if(!ds||ds.length<7) return false;
+    const ry=+ds.substring(0,4);
+    const rm=+ds.substring(5,7);
+    if(ry!==curY||rm!==curM) return false;
+    if(enrollDate&&ds<enrollDate) return false;
     return true;
   }).length;
 }
@@ -539,8 +553,11 @@ function getMonthlyCount(studentId, enrollDate){
 // 방학특강은 전체 누적 (입원일 이후)
 function getTotalCount(studentId, enrollDate){
   return records.filter(r=>{
-    if(r.studentId!==studentId) return false;
-    if(enrollDate && String(r.date||'').trim() < enrollDate) return false;
+    if(String(r.studentId||'')!==String(studentId)) return false;
+    if(enrollDate){
+      const ds=String(r.date||'').trim();
+      if(ds<enrollDate) return false;
+    }
     return true;
   }).length;
 }
@@ -619,7 +636,7 @@ function tbadges(n,s,b){
 
 // ── 탭 전환 ──────────────────────────────────────────────────────
 function ST(t){
-  const tabs=['students','daily','memo','attend','history'];
+  const tabs=['memo','students','daily','attend','history'];
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',tabs[i]===t));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('pane-'+t).classList.add('active');
@@ -627,9 +644,16 @@ function ST(t){
   if(t==='history') IH();
   if(t==='attend') RATT();
   if(t==='memo'){
-    // 메모 탭 클릭 시 항상 서버에서 새로 불러오기
+    // 학생 드롭다운 갱신
+    const mss=document.getElementById('m-fs');
+    const msw=document.getElementById('m-student');
+    const curFs=mss?mss.value:'';
+    if(mss) mss.innerHTML='<option value="">전체 학생</option>'+students.map(s=>`<option value="${s.id}">${s.name} (${s.grade||''})</option>`).join('');
+    if(msw) msw.innerHTML='<option value="">학생 선택 안함</option>'+students.map(s=>`<option value="${s.id}">${s.name} (${s.grade||''})</option>`).join('');
+    if(mss&&curFs) mss.value=curFs;
+    // 항상 서버에서 새로 불러오기
     apig({action:'getMemos'}).then(mr=>{
-      if(mr.ok && mr.data) memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
+      if(mr.ok&&mr.data) memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
       RM();
     }).catch(()=>RM());
   }
@@ -948,13 +972,18 @@ async function togglePayment(id){
 async function saveMemo(){
   const content=document.getElementById('m-cont').value.trim();
   if(!content){alert('내용을 입력해주세요.');return;}
-  const m={id:uid(),ts:String(Date.now()),author:document.getElementById('m-auth').value.trim()||'익명',
-    category:document.getElementById('m-cat').value,content};
+  const sid=document.getElementById('m-student').value;
+  const sname=sid?(students.find(x=>x.id===sid)||{}).name||'':'';
+  const m={id:uid(),ts:String(Date.now()),
+    author:document.getElementById('m-auth').value.trim()||'익명',
+    category:document.getElementById('m-cat').value,
+    studentId:sid, studentName:sname, content};
   memos.unshift(m);
   lastSaveTime=Date.now();
   document.getElementById('m-cont').value='';
   RM();
-  await apia({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,content:b64enc(m.content)});
+  await apia({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,
+    studentId:m.studentId||'',studentName:m.studentName||'',content:b64enc(m.content)});
   sb('ok','✓ 저장됨');
 }
 function openMM(id){
@@ -984,20 +1013,34 @@ function RM(){
   renderAlertBanner('m-alert-area');
   const q=(document.getElementById('m-q').value||'').toLowerCase();
   const fc=document.getElementById('m-fc').value;
-  const list=memos.filter(m=>{
-    if(fc&&m.category!==fc)return false;
-    if(q&&!((m.content||'').toLowerCase().includes(q)||(m.author||'').toLowerCase().includes(q)))return false;
+  const fs=document.getElementById('m-fs')?.value||'';
+
+  // 필터 적용
+  let list=memos.filter(m=>{
+    if(fc&&m.category!==fc) return false;
+    if(fs&&m.studentId!==fs) return false;
+    if(q&&!((m.content||'').toLowerCase().includes(q)||(m.author||'').toLowerCase().includes(q)||(m.studentName||'').toLowerCase().includes(q))) return false;
     return true;
-  }).sort((a,b)=>Number(b.ts)-Number(a.ts));
+  });
+
+  // 공지는 항상 최상단, 나머지는 최신순
+  const notices=list.filter(m=>m.category==='공지').sort((a,b)=>Number(b.ts)-Number(a.ts));
+  const others=list.filter(m=>m.category!=='공지').sort((a,b)=>Number(b.ts)-Number(a.ts));
+  list=[...notices,...others];
+
   document.getElementById('m-cnt').textContent=list.length+'건';
   const el=document.getElementById('m-list');
   if(!list.length){el.innerHTML='';document.getElementById('m-em').style.display='block';return;}
   document.getElementById('m-em').style.display='none';
-  el.innerHTML=list.map(m=>`<div class="mcard">
+  el.innerHTML=list.map(m=>{
+    const isNotice=m.category==='공지';
+    return `<div class="mcard" style="${isNotice?'border-color:#F5C842;border-width:2px;':''}">
     <div class="mcard-hdr">
       <div class="mcard-meta">
+        ${isNotice?'<span style="font-size:13px">📌</span>':''}
         <span class="badge ${CCAT[m.category]||'gy'}">${CEMOJI[m.category]||'💬'} ${m.category||'기타'}</span>
         <strong style="font-size:13px">${m.author||'익명'}</strong>
+        ${m.studentName?`<span class="badge pu" style="font-size:11px">👤 ${m.studentName}</span>`:''}
         <span style="font-size:11px;color:#aaa">${fdt(m.ts)}</span>
       </div>
       <div style="display:flex;gap:5px">
@@ -1006,7 +1049,8 @@ function RM(){
       </div>
     </div>
     <div class="mcard-body">${(m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-  </div>`).join('');
+  </div>`;
+  }).join('');
 }
 
 // ── 월별 히스토리 ────────────────────────────────────────────────
@@ -1163,7 +1207,11 @@ function expH(){
 document.getElementById('today-date').textContent=NOW.getFullYear()+'년 '+(NOW.getMonth()+1)+'월 '+NOW.getDate()+'일 ('+DAYS[NOW.getDay()]+')';
 document.getElementById('ddate').value=todayStr();
 updLabel();
-syncAll().then(()=>startAuto());
+// 앱 시작 시 메모 탭부터
+syncAll().then(()=>{
+  ST('memo');
+  startAuto();
+});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')silentSync();});
 </script>
 </body>
