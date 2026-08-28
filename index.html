@@ -1222,31 +1222,23 @@ document.getElementById('today-date').textContent=NOW.getFullYear()+'년 '+(NOW.
 document.getElementById('ddate').value=todayStr();
 updLabel();
 
-// API 타임아웃 안전장치 (10초 초과 시 에러 처리)
-async function apigSafe(params){
-  return Promise.race([
-    apig(params),
-    new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),10000))
-  ]);
-}
-
-// 초기 로딩 — 학생/기록 먼저, 메모는 탭 진입 시
-(async()=>{
+async function init(){
   sb('loading','연결 중...');
   try{
-    const[sr,rr]=await Promise.all([apigSafe({action:'getStudents'}),apigSafe({action:'getRecords'})]);
-    if(sr.ok)students=sr.data||[];
-    if(rr.ok)records=(rr.data||[]).map(normRec);
-    sb('ok','✓ 연결됨');uls();
-    RS();
-  }catch(e){
-    sb('err','연결 오류 — 새로고침 버튼을 눌러주세요');
-  }
-  // 메모 탭으로 이동 (여기서 getMemos 호출됨)
+    const sr=await apig({action:'getStudents'});
+    if(sr.ok) students=sr.data||[];
+  }catch(e){ sb('err','학생 로딩 실패'); }
+  try{
+    const rr=await apig({action:'getRecords'});
+    if(rr.ok) records=(rr.data||[]).map(normRec);
+  }catch(e){ sb('err','기록 로딩 실패'); }
+  sb('ok','✓ 연결됨'); uls();
+  RS();
   ST('memo');
   startAuto();
-})();
+}
 
+init();
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')silentSync();});
 </script>
 </body>
