@@ -273,7 +273,7 @@ tr:hover td{background:#fafafa}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
     <div>
       <strong id="att-month-label" style="font-size:15px"></strong>
-      <span style="font-size:12px;color:#888;margin-left:8px">기준: 이번달 출석 / 월 할당량</span>
+      <span style="font-size:12px;color:#888;margin-left:8px">기준: 입원일(리셋일) 이후 누적 출석 / 결제 횟수</span>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <select id="att-filter" onchange="RATT()" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px">
@@ -533,52 +533,42 @@ function getQuota(detail){
   return MONTHLY_QUOTA[detail]||0;
 }
 
-// 학생별 이번달 출석 횟수 계산 (입원일 이후 기록만)
-function getMonthlyCount(studentId, enrollDate){
-  const now=new Date();
-  const curY=now.getFullYear();
-  const curM=now.getMonth()+1;
-  return records.filter(r=>{
-    if(String(r.studentId||'')!==String(studentId)) return false;
-    const ds=String(r.date||'').trim();
-    if(!ds||ds.length<7) return false;
-    const ry=+ds.substring(0,4);
-    const rm=+ds.substring(5,7);
-    if(ry!==curY||rm!==curM) return false;
-    if(enrollDate&&ds<enrollDate) return false;
-    return true;
-  }).length;
-}
-
-// 방학특강은 전체 누적 (입원일 이후)
-function getTotalCount(studentId, enrollDate){
+// 입원일(리셋일) 이후 누적 출석 횟수 — 월 구분 없이 연속 카운팅
+function getCumulativeCount(studentId, enrollDate){
   return records.filter(r=>{
     if(String(r.studentId||'')!==String(studentId)) return false;
     if(enrollDate){
       const ds=String(r.date||'').trim();
-      if(ds<enrollDate) return false;
+      if(ds && ds < enrollDate) return false;
     }
     return true;
   }).length;
 }
 
+// 월 단위 카운팅은 제거 — 모든 프로그램 누적 방식으로 통일
+function getMonthlyCount(studentId, enrollDate){
+  return getCumulativeCount(studentId, enrollDate);
+}
+function getTotalCount(studentId, enrollDate){
+  return getCumulativeCount(studentId, enrollDate);
+}
+
 function attInfo(s){
   const quota=getQuota(s.detail);
   if(!quota) return null;
-  const isSpecial=s.detail==='방학특강 15회';
-  const count=isSpecial?getTotalCount(s.id,s.enrollDate):getMonthlyCount(s.id,s.enrollDate);
+  const count=getCumulativeCount(s.id, s.enrollDate);
   const remain=quota-count;
   let level='ok';
   if(remain<=1) level='danger';
   else if(remain<=2) level='warn';
-  return {count,quota,remain,level,isSpecial};
+  return {count, quota, remain, level, isSpecial: s.detail==='방학특강 15회'};
 }
 
 function attBar(s){
   const info=attInfo(s);
   if(!info) return '-';
   const pct=Math.min(100,Math.round(info.count/info.quota*100));
-  const label=info.isSpecial?`전체 ${info.count}/${info.quota}회`:`${info.count}/${info.quota}회`;
+  const label=`${info.count}/${info.quota}회`;
   const remainTxt=info.remain>0?` (${info.remain}회 남음)`:'완료';
   return `<div class="att-bar">
     <div class="att-bg"><div class="att-fill ${info.level}" style="width:${pct}%"></div></div>
@@ -606,16 +596,17 @@ function renderAlertBanner(containerId){
   if(danger.length){
     html+=`<div class="danger-banner"><h4>🚨 1회 남은 학생 (학부모 연락 필요)</h4><div>`;
     danger.forEach(({s,info})=>{
-      const label=info.isSpecial?`전체 ${info.count}/${info.quota}회`:`이번달 ${info.count}/${info.quota}회`;
-      html+=`<span class="alert-student danger" onclick="ST('students')">${s.name} (${s.grade}) — ${label}</span>`;
+      const label=`${info.count}/${info.quota}회`;
+      html+=`<span class="alert-student danger" onclick="ST('attend')">${s.name} (${s.grade}) — ${label}</span>`;
     });
     html+=`</div></div>`;
   }
   if(warn.length){
     html+=`<div class="warn-banner"><h4>⚠️ 2회 남은 학생</h4><div>`;
     warn.forEach(({s,info})=>{
-      const label=info.isSpecial?`전체 ${info.count}/${info.quota}회`:`이번달 ${info.count}/${info.quota}회`;
-      html+=`<span class="alert-student warn" onclick="ST('students')">${s.name} (${s.grade}) — ${label}</span>`;
+      const label=`${info.count}/${info.quota}회`;
+      html+=`<span class="alert-student warn" onclick="ST('attend')">${s.name} (${s.grade}) — ${label}</span>`;
+    });
     });
     html+=`</div></div>`;
   }
@@ -906,14 +897,13 @@ function RATT(){
     const pct=Math.min(100,Math.round(info.count/info.quota*100));
     const remainColor=info.level==='danger'?'#A32D2D':info.level==='warn'?'#854F0B':'#3B6D11';
     const remainBg=info.level==='danger'?'#FCEBEB':info.level==='warn'?'#FAEEDA':'#EAF3DE';
-    const periodLabel=info.isSpecial?'전체':'이번달';
     const paid=s.paid==='Y';
     return `<tr style="${info.level==='danger'?'background:#fff8f8':info.level==='warn'?'background:#fffcf0':''}">
       <td style="font-weight:600">${s.name}</td>
       <td>${s.grade||'-'}</td>
       <td><span class="badge pu" style="font-size:11px">${s.detail||'-'}</span></td>
       <td style="font-size:12px;color:#888">${s.enrollDate||'-'}</td>
-      <td style="font-weight:600;color:#185FA5">${periodLabel} ${info.count}회</td>
+      <td style="font-weight:600;color:#185FA5">${info.count}회</td>
       <td style="color:#666">${info.quota}회</td>
       <td>
         <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${remainBg};color:${remainColor}">
