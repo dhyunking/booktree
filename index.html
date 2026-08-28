@@ -603,7 +603,6 @@ function renderAlertBanner(containerId){
       const label=`${info.count}/${info.quota}회`;
       html+=`<span class="alert-student warn" onclick="ST('attend')">${s.name} (${s.grade}) — ${label}</span>`;
     });
-    });
     html+=`</div></div>`;
   }
   el.innerHTML=html;
