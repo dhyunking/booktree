@@ -241,9 +241,12 @@ tr:hover td{background:#fafafa}
         </select>
       </div>
       <div class="fg"><label>관련 학생 <span style="font-size:10px;color:#888">(선택사항)</span></label>
-        <select id="m-student">
-          <option value="">학생 선택 안함</option>
-        </select>
+        <div class="sw">
+          <input type="text" id="m-student-q" placeholder="이름 입력..." oninput="fMSD()" onfocus="fMSD()" autocomplete="off">
+          <div class="sd" id="m-student-dd"></div>
+        </div>
+        <input type="hidden" id="m-student">
+        <input type="hidden" id="m-student-name">
       </div>
       <div class="fg full"><label>내용</label><textarea id="m-cont" placeholder="내용을 입력하세요..." style="min-height:72px"></textarea></div>
     </div>
@@ -635,13 +638,6 @@ function ST(t){
   if(t==='history') IH();
   if(t==='attend') RATT();
   if(t==='memo'){
-    // 학생 드롭다운 갱신
-    const mss=document.getElementById('m-fs');
-    const msw=document.getElementById('m-student');
-    const curFs=mss?mss.value:'';
-    if(mss) mss.innerHTML='<option value="">전체 학생</option>'+students.map(s=>`<option value="${s.id}">${s.name} (${s.grade||''})</option>`).join('');
-    if(msw) msw.innerHTML='<option value="">학생 선택 안함</option>'+students.map(s=>`<option value="${s.id}">${s.name} (${s.grade||''})</option>`).join('');
-    if(mss&&curFs) mss.value=curFs;
     // 항상 서버에서 새로 불러오기
     apig({action:'getMemos'}).then(mr=>{
       if(mr.ok&&mr.data) memos=(mr.data||[]).sort((a,b)=>Number(b.ts)-Number(a.ts));
@@ -775,7 +771,39 @@ function selStu(id,name){
   document.getElementById('d-prog').value=s?(s.detail||s.program||''):'';
   calcDep();
 }
-document.addEventListener('click',e=>{if(!e.target.closest('.sw'))document.getElementById('d-sd').classList.remove('open');});
+// 메모 학생 검색 드롭다운
+function fMSD(){
+  const q=(document.getElementById('m-student-q').value||'').toLowerCase();
+  const dd=document.getElementById('m-student-dd');
+  const curId=document.getElementById('m-student').value;
+  const list=q
+    ? students.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.grade||'').includes(q))
+    : students;
+  if(!list.length){
+    dd.innerHTML='<div class="so" style="color:#aaa">검색 결과 없음</div>';
+    dd.classList.add('open');return;
+  }
+  dd.innerHTML=
+    '<div class="so" style="color:#888;font-size:12px" onclick="clearMStudent()">✕ 선택 안함</div>'+
+    list.map(s=>`<div class="so${s.id===curId?' sel':''}" onclick="selMStu('${s.id}','${s.name.replace(/'/g,"\\'")}')">
+      ${s.name} <span style="color:#888;font-size:11px">${s.grade||''}</span></div>`).join('');
+  dd.classList.add('open');
+}
+function selMStu(id,name){
+  document.getElementById('m-student').value=id;
+  document.getElementById('m-student-name').value=name;
+  document.getElementById('m-student-q').value=name;
+  document.getElementById('m-student-dd').classList.remove('open');
+}
+function clearMStudent(){
+  document.getElementById('m-student').value='';
+  document.getElementById('m-student-name').value='';
+  document.getElementById('m-student-q').value='';
+  document.getElementById('m-student-dd').classList.remove('open');
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.sw')) document.querySelectorAll('.sd').forEach(d=>d.classList.remove('open'));
+});
 function calcDep(){
   const arrive=document.getElementById('d-arrive').value;
   const id=document.getElementById('d-sid').value;
@@ -963,7 +991,7 @@ async function saveMemo(){
   const content=document.getElementById('m-cont').value.trim();
   if(!content){alert('내용을 입력해주세요.');return;}
   const sid=document.getElementById('m-student').value;
-  const sname=sid?(students.find(x=>x.id===sid)||{}).name||'':'';
+  const sname=document.getElementById('m-student-name').value||'';
   const m={id:uid(),ts:String(Date.now()),
     author:document.getElementById('m-auth').value.trim()||'익명',
     category:document.getElementById('m-cat').value,
@@ -971,6 +999,9 @@ async function saveMemo(){
   memos.unshift(m);
   lastSaveTime=Date.now();
   document.getElementById('m-cont').value='';
+  document.getElementById('m-student-q').value='';
+  document.getElementById('m-student').value='';
+  document.getElementById('m-student-name').value='';
   RM();
   await apia({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,
     studentId:m.studentId||'',studentName:m.studentName||'',content:b64enc(m.content)});
