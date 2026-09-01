@@ -291,8 +291,8 @@ tr:hover td{background:#fafafa}
     <table style="min-width:700px">
       <thead>
         <tr>
-          <th>이름</th><th>학년</th><th>세부 프로그램</th><th>입원일</th>
-          <th>이번달 출석</th><th>할당량</th><th>남은 횟수</th><th>진행률</th><th>결제</th><th>리셋</th>
+          <th>이름</th><th>학년</th><th>세부 프로그램</th><th>사이클 시작일</th>
+          <th>마지막 출석</th><th>누적 출석</th><th>할당량</th><th>남은 횟수</th><th>진행률</th><th>결제</th><th>리셋</th>
         </tr>
       </thead>
       <tbody id="att-tb"></tbody>
@@ -564,6 +564,37 @@ function attInfo(s){
   if(remain<=1) level='danger';
   else if(remain<=2) level='warn';
   return {count, quota, remain, level, isSpecial: s.detail==='방학특강 15회'};
+}
+
+// 마지막 출석일 조회
+function lastAttendDate(studentId, enrollDate){
+  const list=records.filter(r=>{
+    if(String(r.studentId||'')!==String(studentId)) return false;
+    if(enrollDate && String(r.date||'')<enrollDate) return false;
+    return true;
+  }).map(r=>String(r.date||'')).filter(Boolean).sort();
+  return list.length ? list[list.length-1] : null;
+}
+
+// 자동 리셋 — 저장 후 할당 횟수 초과 시 enrollDate를 오늘로 갱신
+async function checkAutoReset(s){
+  const quota=getQuota(s.detail);
+  if(!quota) return;
+  const count=getCumulativeCount(s.id, s.enrollDate);
+  if(count>=quota){
+    const newEnroll=todayStr();
+    const i=students.findIndex(x=>x.id===s.id);
+    if(i<0) return;
+    students[i]={...students[i], enrollDate:newEnroll};
+    // 구글 시트에 반영
+    await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
+      program:s.program,detail:s.detail,phone:s.phone,
+      enrollDate:newEnroll,paid:s.paid||'N',
+      leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
+      memo:s.memo});
+    sb('ok',`✓ ${s.name} 자동 리셋 완료 (${count}/${quota}회 완료)`);
+    RS(); RATT();
+  }
 }
 
 function attBar(s){
@@ -865,6 +896,8 @@ async function saveRec(){
     name:rec.name,grade:rec.grade,program:rec.program,arrive:rec.arrive,depart:rec.depart,
     btStart:'',btEnd:'',taskNormal:'N',taskSpecial:'N',taskBooktalk:'N',memo:''});
   sb('ok','✓ 저장됨');
+  // 저장 후 자동 리셋 체크
+  checkAutoReset(s);
 }
 function openRM(id){
   const r=records.find(x=>x.id===id);if(!r)return;
@@ -962,11 +995,15 @@ function RATT(){
     const remainColor=info.level==='danger'?'#A32D2D':info.level==='warn'?'#854F0B':'#3B6D11';
     const remainBg=info.level==='danger'?'#FCEBEB':info.level==='warn'?'#FAEEDA':'#EAF3DE';
     const paid=s.paid==='Y';
+    const lastDate=lastAttendDate(s.id, s.enrollDate);
+    const lastDateStr=lastDate?lastDate.substring(5).replace('-','/'):'없음';
+    const enrollStr=s.enrollDate?s.enrollDate.substring(5).replace('-','/'):'-';
     return `<tr style="${info.level==='danger'?'background:#fff8f8':info.level==='warn'?'background:#fffcf0':''}">
       <td style="font-weight:600">${s.name}</td>
       <td>${s.grade||'-'}</td>
       <td><span class="badge pu" style="font-size:11px">${s.detail||'-'}</span></td>
-      <td style="font-size:12px;color:#888">${s.enrollDate||'-'}</td>
+      <td style="font-size:12px;color:#185FA5;font-weight:500">${enrollStr}</td>
+      <td style="font-size:12px;font-weight:500;color:${lastDate?'#444':'#aaa'}">${lastDateStr}</td>
       <td style="font-weight:600;color:#185FA5">${info.count}회</td>
       <td style="color:#666">${info.quota}회</td>
       <td>
