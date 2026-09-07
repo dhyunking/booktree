@@ -460,22 +460,27 @@ function fdt(ts){
 }
 function addM(t,m){if(!t)return '';const[h,mn]=t.split(':').map(Number);const tot=h*60+mn+m;return p2(Math.floor(tot/60)%24)+':'+p2(tot%60);}
 
-// Base64 인코딩 (한글 포함 긴 텍스트 GET 전송용)
-function b64enc(str){
-  try{return btoa(unescape(encodeURIComponent(str)));}catch(e){return encodeURIComponent(str);}
+// 메모 내용 인코딩 — encodeURIComponent 사용 (Apps Script에서 decodeURIComponent로 디코딩)
+function encMemo(str){
+  try{ return encodeURIComponent(str||''); }catch(e){ return ''; }
 }
 
 // ── API ──────────────────────────────────────────────────────────
 async function apig(params){const r=await fetch(API+'?'+new URLSearchParams(params));return r.json();}
 async function apia(params){const r=await fetch(API+'?'+new URLSearchParams(params));return r.json();}
-async function apipost(body){
-  const r=await fetch(API,{
-    method:'POST',
-    redirect:'follow',
-    headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify(body)
-  });
-  return r.json();
+// 메모는 POST로 저장 (긴 텍스트 URL 제한 우회)
+async function apiPost(body){
+  try{
+    const res=await fetch(API,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(body)
+    });
+    return await res.json();
+  }catch(e){
+    // POST 실패 시 GET fallback (내용 짧은 경우)
+    return await apia({...body,content:encMemo(body.content||'')});
+  }
 }
 function sb(s,t){const e=document.getElementById('sbadge');e.textContent=t;e.className='badge-sync '+s;}
 function uls(){const e=document.getElementById('last-sync');const d=new Date();e.textContent='마지막: '+d.getHours()+':'+p2(d.getMinutes())+':'+p2(d.getSeconds());}
@@ -576,23 +581,25 @@ function lastAttendDate(studentId, enrollDate){
   return list.length ? list[list.length-1] : null;
 }
 
-// 자동 리셋 — 저장 후 할당 횟수 초과 시 enrollDate를 오늘로 갱신
+// 자동 리셋 — 저장 후 할당 횟수 초과 시 enrollDate를 내일로 갱신 (오늘 기록은 이전 사이클)
 async function checkAutoReset(s){
   const quota=getQuota(s.detail);
   if(!quota) return;
   const count=getCumulativeCount(s.id, s.enrollDate);
   if(count>=quota){
-    const newEnroll=todayStr();
+    // 내일 날짜로 설정 → 오늘 출석은 이전 사이클, 내일부터 새 사이클
+    const tomorrow=new Date();
+    tomorrow.setDate(tomorrow.getDate()+1);
+    const newEnroll=tomorrow.getFullYear()+'-'+p2(tomorrow.getMonth()+1)+'-'+p2(tomorrow.getDate());
     const i=students.findIndex(x=>x.id===s.id);
     if(i<0) return;
     students[i]={...students[i], enrollDate:newEnroll};
-    // 구글 시트에 반영
     await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
       program:s.program,detail:s.detail,phone:s.phone,
       enrollDate:newEnroll,paid:s.paid||'N',
       leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
       memo:s.memo});
-    sb('ok',`✓ ${s.name} 자동 리셋 완료 (${count}/${quota}회 완료)`);
+    sb('ok',`✓ ${s.name} 자동 리셋! (${count}/${quota}회 완료 → 내일부터 새 사이클)`);
     RS(); RATT();
   }
 }
@@ -1004,7 +1011,14 @@ function RATT(){
       <td><span class="badge pu" style="font-size:11px">${s.detail||'-'}</span></td>
       <td style="font-size:12px;color:#185FA5;font-weight:500">${enrollStr}</td>
       <td style="font-size:12px;font-weight:500;color:${lastDate?'#444':'#aaa'}">${lastDateStr}</td>
-      <td style="font-weight:600;color:#185FA5">${info.count}회</td>
+      <td style="font-weight:600;color:#185FA5">
+        <div style="display:flex;align-items:center;gap:4px">
+          <input type="number" min="0" max="${info.quota}" value="${info.count}"
+            style="width:48px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-weight:600;color:#185FA5;text-align:center"
+            onchange="adjustCount('${s.id}','${s.name}',this.value,'${info.quota}','${s.enrollDate||''}')">
+          <span style="font-size:11px;color:#888">회</span>
+        </div>
+      </td>
       <td style="color:#666">${info.quota}회</td>
       <td>
         <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${remainBg};color:${remainColor}">
@@ -1060,7 +1074,50 @@ async function resetCount(id, name){
   sb('ok','✓ 리셋 완료');
 }
 
-// 결제 상태 토글
+// 횟수 직접 수정 — enrollDate를 역산해서 카운팅 조정
+async function adjustCount(id, name, newCountStr, quota, currentEnroll){
+  const newCount=parseInt(newCountStr);
+  if(isNaN(newCount)||newCount<0||newCount>+quota){
+    alert(`0 ~ ${quota} 사이의 숫자를 입력해주세요.`);
+    RATT();return;
+  }
+  const i=students.findIndex(x=>x.id===id);
+  if(i<0)return;
+  const s=students[i];
+
+  // 현재 사이클 시작일 이후 출석 기록 목록 (날짜 오름차순)
+  const cycleRecords=records.filter(r=>{
+    if(String(r.studentId||'')!==String(id))return false;
+    if(currentEnroll&&String(r.date||'')<currentEnroll)return false;
+    return true;
+  }).sort((a,b)=>String(a.date||'')>String(b.date||'')?1:-1);
+
+  let newEnroll='';
+  if(newCount===0){
+    // 0이면 내일부터 새로 시작
+    const tom=new Date();tom.setDate(tom.getDate()+1);
+    newEnroll=tom.getFullYear()+'-'+p2(tom.getMonth()+1)+'-'+p2(tom.getDate());
+  } else if(newCount<=cycleRecords.length){
+    // newCount번째 기록 이전 날짜로 enrollDate 설정
+    // 예: newCount=3이면 3번째 기록 날짜를 enrollDate로
+    const targetRec=cycleRecords[cycleRecords.length-newCount];
+    newEnroll=String(targetRec.date||'');
+  } else {
+    // 현재 기록보다 많은 숫자 입력 → enrollDate를 과거로 당길 수 없으므로 안내
+    alert(`현재 사이클에 출석 기록이 ${cycleRecords.length}회밖에 없어요.\n최대 ${cycleRecords.length}까지만 입력 가능해요.`);
+    RATT();return;
+  }
+
+  students[i]={...students[i],enrollDate:newEnroll};
+  lastSaveTime=Date.now();
+  RATT();RS();
+  await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
+    program:s.program,detail:s.detail,phone:s.phone,
+    enrollDate:newEnroll,paid:s.paid||'N',
+    leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
+    memo:s.memo});
+  sb('ok',`✓ ${name} 출석 횟수 ${newCount}회로 조정됨`);
+}
 async function togglePayment(id){
   const i=students.findIndex(x=>x.id===id);
   if(i<0) return;
@@ -1091,8 +1148,8 @@ async function saveMemo(){
   document.getElementById('m-student').value='';
   document.getElementById('m-student-name').value='';
   RM();
-  await apia({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,
-    studentId:m.studentId||'',studentName:m.studentName||'',content:b64enc(m.content)});
+  await apiPost({action:'saveMemo',id:m.id,ts:m.ts,author:m.author,category:m.category,
+    studentId:m.studentId||'',studentName:m.studentName||'',content:m.content});
   sb('ok','✓ 저장됨');
 }
 function openMM(id){
@@ -1110,7 +1167,7 @@ async function updMemo(){
     category:document.getElementById('me-cat').value,content:document.getElementById('me-cont').value};
   close('mm');lastSaveTime=Date.now();RM();
   const m=memos[i];
-  await apia({action:'updateMemo',id:m.id,author:m.author,category:m.category,content:b64enc(m.content)});
+  await apiPost({action:'updateMemo',id:m.id,author:m.author,category:m.category,content:m.content});
   sb('ok','✓ 저장됨');
 }
 async function delMemo(id){
