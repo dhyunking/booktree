@@ -947,7 +947,7 @@ async function delRec(id){
 function RD(){
   updLabel();
   const date=document.getElementById('ddate').value||todayStr();
-  const list=records.filter(r=>String(r.date||'').trim()===date).sort((a,b)=>String(a.arrive||'')>String(b.arrive||'')?1:-1);
+  const list=records.filter(r=>String(r.date||'').trim()===date).sort((a,b)=>String(a.depart||'')>String(b.depart||'')?1:-1);
   const tb=document.getElementById('d-tb');
   if(!list.length){tb.innerHTML='';document.getElementById('d-em').style.display='block';return;}
   document.getElementById('d-em').style.display='none';
