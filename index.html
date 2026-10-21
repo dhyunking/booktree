@@ -540,8 +540,9 @@ function getQuota(detail){
   return MONTHLY_QUOTA[detail]||0;
 }
 
-// 입원일(리셋일) 이후 누적 출석 횟수 — 월 구분 없이 연속 카운팅
+// currentCount 기반 카운팅 — 구글 시트에 저장된 숫자를 직접 사용
 function getCumulativeCount(studentId, enrollDate){
+  // fallback: 이전 방식 (currentCount 없을 때)
   return records.filter(r=>{
     if(String(r.studentId||'')!==String(studentId)) return false;
     if(enrollDate){
@@ -552,21 +553,21 @@ function getCumulativeCount(studentId, enrollDate){
   }).length;
 }
 
-// 월 단위 카운팅은 제거 — 모든 프로그램 누적 방식으로 통일
-function getMonthlyCount(studentId, enrollDate){
-  return getCumulativeCount(studentId, enrollDate);
-}
-function getTotalCount(studentId, enrollDate){
-  return getCumulativeCount(studentId, enrollDate);
+function getCount(s){
+  // currentCount가 있으면 우선 사용, 없으면 기존 방식
+  const cc=parseInt(s.currentCount);
+  if(!isNaN(cc)&&cc>=0) return cc;
+  return getCumulativeCount(s.id, s.enrollDate);
 }
 
 function attInfo(s){
   const quota=getQuota(s.detail);
   if(!quota) return null;
-  const count=getCumulativeCount(s.id, s.enrollDate);
+  const count=getCount(s);
   const remain=quota-count;
   let level='ok';
-  if(remain<=1) level='danger';
+  if(count>=quota) level='done';       // 완료 — 재등록 필요
+  else if(remain<=1) level='danger';
   else if(remain<=2) level='warn';
   return {count, quota, remain, level, isSpecial: s.detail==='방학특강 15회'};
 }
@@ -581,27 +582,23 @@ function lastAttendDate(studentId, enrollDate){
   return list.length ? list[list.length-1] : null;
 }
 
-// 자동 리셋 — 저장 후 할당 횟수 초과 시 enrollDate를 내일로 갱신 (오늘 기록은 이전 사이클)
+// 출석 저장 후 currentCount +1 (자동 리셋 없음 — 완료 시 "재등록 필요" 표시)
 async function checkAutoReset(s){
   const quota=getQuota(s.detail);
   if(!quota) return;
-  const count=getCumulativeCount(s.id, s.enrollDate);
-  if(count>=quota){
-    // 내일 날짜로 설정 → 오늘 출석은 이전 사이클, 내일부터 새 사이클
-    const tomorrow=new Date();
-    tomorrow.setDate(tomorrow.getDate()+1);
-    const newEnroll=tomorrow.getFullYear()+'-'+p2(tomorrow.getMonth()+1)+'-'+p2(tomorrow.getDate());
-    const i=students.findIndex(x=>x.id===s.id);
-    if(i<0) return;
-    students[i]={...students[i], enrollDate:newEnroll};
-    await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
-      program:s.program,detail:s.detail,phone:s.phone,
-      enrollDate:newEnroll,paid:s.paid||'N',
-      leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
-      memo:s.memo});
-    sb('ok',`✓ ${s.name} 자동 리셋! (${count}/${quota}회 완료 → 내일부터 새 사이클)`);
-    RS(); RATT();
+  const i=students.findIndex(x=>x.id===s.id);
+  if(i<0) return;
+  const newCount=(getCount(s)||0)+1;
+  students[i]={...students[i], currentCount:newCount};
+  await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
+    program:s.program,detail:s.detail,phone:s.phone,
+    enrollDate:s.enrollDate||'',paid:s.paid||'N',
+    leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
+    memo:s.memo,currentCount:newCount});
+  if(newCount>=quota){
+    sb('warn',`🏁 ${s.name} ${quota}회 완료! 재등록 후 리셋해주세요.`);
   }
+  RS(); RATT();
 }
 
 function attBar(s){
@@ -618,34 +615,41 @@ function attBar(s){
 
 // 경고 학생 목록 반환
 function getAlertStudents(){
-  const warn=[],danger=[];
-  students.forEach(s=>{
+  const done=[],danger=[],warn=[];
+  students.filter(s=>!isOnLeave(s)).forEach(s=>{
     const info=attInfo(s);
     if(!info)return;
-    if(info.level==='danger') danger.push({s,info});
+    if(info.level==='done') done.push({s,info});
+    else if(info.level==='danger') danger.push({s,info});
     else if(info.level==='warn') warn.push({s,info});
   });
-  return {warn,danger};
+  return {done,warn,danger};
 }
 
 function renderAlertBanner(containerId){
   const el=document.getElementById(containerId);
   if(!el)return;
-  const{warn,danger}=getAlertStudents();
+  const{done,warn,danger}=getAlertStudents();
   let html='';
+  if(done.length){
+    html+=`<div style="background:#f3e8ff;border:1px solid #c084fc;border-radius:8px;padding:10px 14px;margin-bottom:8px">
+      <h4 style="margin:0 0 6px;color:#7e22ce;font-size:13px">🏁 재등록 필요 (${done.length}명)</h4><div style="display:flex;flex-wrap:wrap;gap:6px">`;
+    done.forEach(({s,info})=>{
+      html+=`<span style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="ST('attend')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
+    });
+    html+=`</div></div>`;
+  }
   if(danger.length){
     html+=`<div class="danger-banner"><h4>🚨 1회 남은 학생 (학부모 연락 필요)</h4><div>`;
     danger.forEach(({s,info})=>{
-      const label=`${info.count}/${info.quota}회`;
-      html+=`<span class="alert-student danger" onclick="ST('attend')">${s.name} (${s.grade}) — ${label}</span>`;
+      html+=`<span class="alert-student danger" onclick="ST('attend')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
     });
     html+=`</div></div>`;
   }
   if(warn.length){
     html+=`<div class="warn-banner"><h4>⚠️ 2회 남은 학생</h4><div>`;
     warn.forEach(({s,info})=>{
-      const label=`${info.count}/${info.quota}회`;
-      html+=`<span class="alert-student warn" onclick="ST('attend')">${s.name} (${s.grade}) — ${label}</span>`;
+      html+=`<span class="alert-student warn" onclick="ST('attend')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
     });
     html+=`</div></div>`;
   }
@@ -999,13 +1003,13 @@ function RATT(){
     const info=attInfo(s);
     if(!info) return '';
     const pct=Math.min(100,Math.round(info.count/info.quota*100));
-    const remainColor=info.level==='danger'?'#A32D2D':info.level==='warn'?'#854F0B':'#3B6D11';
-    const remainBg=info.level==='danger'?'#FCEBEB':info.level==='warn'?'#FAEEDA':'#EAF3DE';
+    const remainColor=info.level==='done'?'#6d28d9':info.level==='danger'?'#A32D2D':info.level==='warn'?'#854F0B':'#3B6D11';
+    const remainBg=info.level==='done'?'#ede9fe':info.level==='danger'?'#FCEBEB':info.level==='warn'?'#FAEEDA':'#EAF3DE';
     const paid=s.paid==='Y';
     const lastDate=lastAttendDate(s.id, s.enrollDate);
     const lastDateStr=lastDate?lastDate.substring(5).replace('-','/'):'없음';
     const enrollStr=s.enrollDate?s.enrollDate.substring(5).replace('-','/'):'-';
-    return `<tr style="${info.level==='danger'?'background:#fff8f8':info.level==='warn'?'background:#fffcf0':''}">
+    return `<tr style="${info.level==='done'?'background:#faf5ff':info.level==='danger'?'background:#fff8f8':info.level==='warn'?'background:#fffcf0':''}">
       <td style="font-weight:600">${s.name}</td>
       <td>${s.grade||'-'}</td>
       <td><span class="badge pu" style="font-size:11px">${s.detail||'-'}</span></td>
@@ -1015,14 +1019,14 @@ function RATT(){
         <div style="display:flex;align-items:center;gap:4px">
           <input type="number" min="0" max="${info.quota}" value="${info.count}"
             style="width:48px;padding:3px 6px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-weight:600;color:#185FA5;text-align:center"
-            onchange="adjustCount('${s.id}','${s.name}',this.value,'${info.quota}','${s.enrollDate||''}')">
+            onchange="adjustCount('${s.id}','${s.name}',this.value,'${info.quota}')">
           <span style="font-size:11px;color:#888">회</span>
         </div>
       </td>
       <td style="color:#666">${info.quota}회</td>
       <td>
         <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${remainBg};color:${remainColor}">
-          ${info.remain>0?info.remain+'회 남음':'완료 ✓'}
+          ${info.level==='done'?'🏁 재등록 필요':info.remain>0?info.remain+'회 남음':'완료 ✓'}
         </span>
       </td>
       <td style="min-width:120px">
@@ -1061,61 +1065,40 @@ function RATT(){
   }
 }
 
-// 수동 리셋 — 입원일을 오늘로 변경해서 이전 기록 카운팅 제외
+// 수동 리셋 — currentCount를 0으로 초기화
 async function resetCount(id, name){
-  if(!confirm(`${name} 학생의 출결 카운팅을 리셋할까요?\n오늘(${todayStr()})부터 새로 카운팅이 시작됩니다.\n(기존 출석 기록은 삭제되지 않습니다)`)) return;
+  if(!confirm(`${name} 학생의 출결 횟수를 0으로 리셋할까요?\n재등록 확인 후 눌러주세요.`)) return;
   const i=students.findIndex(x=>x.id===id);
   if(i<0) return;
-  students[i]={...students[i], enrollDate:todayStr()};
+  students[i]={...students[i], currentCount:0};
   lastSaveTime=Date.now();RATT();RS();
-  await apia({action:'saveStudent',id:students[i].id,name:students[i].name,
-    grade:students[i].grade,program:students[i].program,detail:students[i].detail,
-    phone:students[i].phone,enrollDate:todayStr(),memo:students[i].memo});
-  sb('ok','✓ 리셋 완료');
+  const s=students[i];
+  await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
+    program:s.program,detail:s.detail,phone:s.phone,
+    enrollDate:s.enrollDate||'',paid:s.paid||'N',
+    leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
+    memo:s.memo,currentCount:0});
+  sb('ok',`✓ ${name} 리셋 완료 (0회)`);
 }
 
-// 횟수 직접 수정 — enrollDate를 역산해서 카운팅 조정
-async function adjustCount(id, name, newCountStr, quota, currentEnroll){
+// 횟수 직접 수정 — currentCount를 직접 변경
+async function adjustCount(id, name, newCountStr, quota){
   const newCount=parseInt(newCountStr);
-  if(isNaN(newCount)||newCount<0||newCount>+quota){
-    alert(`0 ~ ${quota} 사이의 숫자를 입력해주세요.`);
+  if(isNaN(newCount)||newCount<0){
+    alert(`0 이상의 숫자를 입력해주세요.`);
     RATT();return;
   }
   const i=students.findIndex(x=>x.id===id);
   if(i<0)return;
   const s=students[i];
-
-  // 현재 사이클 시작일 이후 출석 기록 목록 (날짜 오름차순)
-  const cycleRecords=records.filter(r=>{
-    if(String(r.studentId||'')!==String(id))return false;
-    if(currentEnroll&&String(r.date||'')<currentEnroll)return false;
-    return true;
-  }).sort((a,b)=>String(a.date||'')>String(b.date||'')?1:-1);
-
-  let newEnroll='';
-  if(newCount===0){
-    // 0이면 내일부터 새로 시작
-    const tom=new Date();tom.setDate(tom.getDate()+1);
-    newEnroll=tom.getFullYear()+'-'+p2(tom.getMonth()+1)+'-'+p2(tom.getDate());
-  } else if(newCount<=cycleRecords.length){
-    // newCount번째 기록 이전 날짜로 enrollDate 설정
-    // 예: newCount=3이면 3번째 기록 날짜를 enrollDate로
-    const targetRec=cycleRecords[cycleRecords.length-newCount];
-    newEnroll=String(targetRec.date||'');
-  } else {
-    // 현재 기록보다 많은 숫자 입력 → enrollDate를 과거로 당길 수 없으므로 안내
-    alert(`현재 사이클에 출석 기록이 ${cycleRecords.length}회밖에 없어요.\n최대 ${cycleRecords.length}까지만 입력 가능해요.`);
-    RATT();return;
-  }
-
-  students[i]={...students[i],enrollDate:newEnroll};
+  students[i]={...students[i],currentCount:newCount};
   lastSaveTime=Date.now();
   RATT();RS();
   await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
     program:s.program,detail:s.detail,phone:s.phone,
-    enrollDate:newEnroll,paid:s.paid||'N',
+    enrollDate:s.enrollDate||'',paid:s.paid||'N',
     leaveStart:s.leaveStart||'',leaveEnd:s.leaveEnd||'',onLeave:s.onLeave||'N',
-    memo:s.memo});
+    memo:s.memo,currentCount:newCount});
   sb('ok',`✓ ${name} 출석 횟수 ${newCount}회로 조정됨`);
 }
 async function togglePayment(id){
