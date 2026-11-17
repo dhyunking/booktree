@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>책나무 서래초점 — 원생관리</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1a1a1a;background:#f0f2f5}
@@ -150,7 +151,6 @@ tr:hover td{background:#fafafa}
   <button class="tab-btn active" onclick="ST('memo')">📝 메모/업무일지</button>
   <button class="tab-btn" onclick="ST('students')">👥 원생 정보</button>
   <button class="tab-btn" onclick="ST('daily')">📋 일일 출석부</button>
-  <button class="tab-btn" onclick="ST('attend')">📊 출결현황</button>
   <button class="tab-btn" onclick="ST('history')">📅 월별 히스토리</button>
 </div>
 
@@ -270,36 +270,6 @@ tr:hover td{background:#fafafa}
 
 <!-- ② 원생 정보 -->
 
-<!-- ④ 출결현황 -->
-<div id="pane-attend" class="tab-pane">
-  <div id="att-alert-area" style="margin-bottom:.75rem"></div>
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
-    <div>
-      <strong id="att-month-label" style="font-size:15px"></strong>
-      <span style="font-size:12px;color:#888;margin-left:8px">기준: 입원일(리셋일) 이후 누적 출석 / 결제 횟수</span>
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <select id="att-filter" onchange="RATT()" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px">
-        <option value="">전체</option>
-        <option value="danger">🚨 1회 남음</option>
-        <option value="warn">⚠️ 2회 남음</option>
-        <option value="ok">✅ 정상</option>
-      </select>
-    </div>
-  </div>
-  <div class="tw">
-    <table style="min-width:700px">
-      <thead>
-        <tr>
-          <th>이름</th><th>학년</th><th>세부 프로그램</th><th>사이클 시작일</th>
-          <th>마지막 출석</th><th>누적 출석</th><th>할당량</th><th>남은 횟수</th><th>진행률</th><th>결제</th><th>리셋</th>
-        </tr>
-      </thead>
-      <tbody id="att-tb"></tbody>
-    </table>
-    <div class="empty" id="att-em" style="display:none"><span>📊</span>원생 정보가 없습니다</div>
-  </div>
-</div>
 
 <!-- ⑤ 월별 히스토리 -->
 <div id="pane-history" class="tab-pane">
@@ -308,7 +278,7 @@ tr:hover td{background:#fafafa}
     <select id="h-mo" onchange="calSync();RH()" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;width:80px"><option value="">전체</option></select>
     <select id="h-st" onchange="RH()" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;width:130px"><option value="">전체 학생</option></select>
     <span id="h-cnt" style="font-size:12px;color:#888"></span>
-    <button class="btn sm" onclick="expH()" style="margin-left:auto">⬇️ CSV</button>
+    <button class="btn sm pri" onclick="expH()" style="margin-left:auto">⬇️ 엑셀 다운로드</button>
   </div>
   <div class="cal-wrap">
     <div class="cal-hdr">
@@ -521,7 +491,6 @@ async function silentSync(){
     if(ap){
       if(ap.id==='pane-daily') RD();
       if(ap.id==='pane-history') IH();
-      if(ap.id==='pane-attend') RATT();
     }
   }catch(e){}
 }
@@ -598,7 +567,7 @@ async function checkAutoReset(s){
   if(newCount>=quota){
     sb('warn',`🏁 ${s.name} ${quota}회 완료! 재등록 후 리셋해주세요.`);
   }
-  RS(); RATT();
+  RS();
 }
 
 function attBar(s){
@@ -635,21 +604,21 @@ function renderAlertBanner(containerId){
     html+=`<div style="background:#f3e8ff;border:1px solid #c084fc;border-radius:8px;padding:10px 14px;margin-bottom:8px">
       <h4 style="margin:0 0 6px;color:#7e22ce;font-size:13px">🏁 재등록 필요 (${done.length}명)</h4><div style="display:flex;flex-wrap:wrap;gap:6px">`;
     done.forEach(({s,info})=>{
-      html+=`<span style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="ST('attend')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
+      html+=`<span style="background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="ST('students')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
     });
     html+=`</div></div>`;
   }
   if(danger.length){
     html+=`<div class="danger-banner"><h4>🚨 1회 남은 학생 (학부모 연락 필요)</h4><div>`;
     danger.forEach(({s,info})=>{
-      html+=`<span class="alert-student danger" onclick="ST('attend')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
+      html+=`<span class="alert-student danger" onclick="ST('students')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
     });
     html+=`</div></div>`;
   }
   if(warn.length){
     html+=`<div class="warn-banner"><h4>⚠️ 2회 남은 학생</h4><div>`;
     warn.forEach(({s,info})=>{
-      html+=`<span class="alert-student warn" onclick="ST('attend')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
+      html+=`<span class="alert-student warn" onclick="ST('students')">${s.name} (${s.grade}) — ${info.count}/${info.quota}회</span>`;
     });
     html+=`</div></div>`;
   }
@@ -692,13 +661,12 @@ function tbadges(n,s,b){
 
 // ── 탭 전환 ──────────────────────────────────────────────────────
 function ST(t){
-  const tabs=['memo','students','daily','attend','history'];
+  const tabs=['memo','students','daily','history'];
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',tabs[i]===t));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('pane-'+t).classList.add('active');
   if(t==='daily') RD();
   if(t==='history') IH();
-  if(t==='attend') RATT();
   if(t==='memo'){
     // 항상 서버에서 새로 불러오기
     apig({action:'getMemos'}).then(mr=>{
@@ -1071,7 +1039,7 @@ async function resetCount(id, name){
   const i=students.findIndex(x=>x.id===id);
   if(i<0) return;
   students[i]={...students[i], currentCount:0};
-  lastSaveTime=Date.now();RATT();RS();
+  lastSaveTime=Date.now();RS();
   const s=students[i];
   await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
     program:s.program,detail:s.detail,phone:s.phone,
@@ -1086,14 +1054,14 @@ async function adjustCount(id, name, newCountStr, quota){
   const newCount=parseInt(newCountStr);
   if(isNaN(newCount)||newCount<0){
     alert(`0 이상의 숫자를 입력해주세요.`);
-    RATT();return;
+    RS();return;
   }
   const i=students.findIndex(x=>x.id===id);
   if(i<0)return;
   const s=students[i];
   students[i]={...students[i],currentCount:newCount};
   lastSaveTime=Date.now();
-  RATT();RS();
+  RS();
   await apia({action:'saveStudent',id:s.id,name:s.name,grade:s.grade,
     program:s.program,detail:s.detail,phone:s.phone,
     enrollDate:s.enrollDate||'',paid:s.paid||'N',
@@ -1106,7 +1074,7 @@ async function togglePayment(id){
   if(i<0) return;
   const newPaid=students[i].paid==='Y'?'N':'Y';
   students[i]={...students[i], paid:newPaid};
-  lastSaveTime=Date.now();RATT();RS();
+  lastSaveTime=Date.now();RS();
   await apia({action:'saveStudent',id:students[i].id,name:students[i].name,
     grade:students[i].grade,program:students[i].program,detail:students[i].detail,
     phone:students[i].phone,enrollDate:students[i].enrollDate||'',
@@ -1346,10 +1314,15 @@ function expH(){
   const yr=document.getElementById('h-yr').value;
   const mo=document.getElementById('h-mo').value;
   const list=records.filter(r=>{const ds=String(r.date||'');const ry=ds.substring(0,4),rm=ds.substring(5,7);if(yr&&ry!==yr)return false;if(mo&&+rm!==+mo)return false;return true;});
-  const hdr='날짜,이름,학년,프로그램,등원,북토크시작,북토크종료,일반활동지,특별활동지,북토크,하원,메모';
-  const rows=list.map(r=>[r.date,r.name,r.grade,r.program,r.arrive,r.btStart,r.btEnd,r.taskNormal?'Y':'N',r.taskSpecial?'Y':'N',r.taskBooktalk?'Y':'N',r.depart,'"'+(r.memo||'')+'"'].join(','));
-  const blob=new Blob(['\uFEFF'+hdr+'\n'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
-  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='책나무_히스토리_'+yr+(mo?'_'+mo+'월':'')+'.csv';a.click();URL.revokeObjectURL(url);
+  if(!list.length){alert('다운로드할 데이터가 없습니다.');return;}
+  if(typeof XLSX==='undefined'){alert('엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.');return;}
+  const wsData=[['날짜','이름','학년','프로그램','등원','북토크시작','북토크종료','일반활동지','특별활동지','북토크','하원','메모']];
+  list.forEach(r=>wsData.push([r.date,r.name,r.grade,r.program,r.arrive||'',r.btStart||'',r.btEnd||'',r.taskNormal==='Y'?'Y':'N',r.taskSpecial==='Y'?'Y':'N',r.taskBooktalk==='Y'?'Y':'N',r.depart||'',r.memo||'']));
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols']=[{wch:12},{wch:8},{wch:6},{wch:14},{wch:8},{wch:10},{wch:10},{wch:10},{wch:10},{wch:8},{wch:8},{wch:20}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,(mo?mo+'월 ':'')+yr+'년 출석기록');
+  XLSX.writeFile(wb,'책나무_서래초점_'+yr+(mo?'_'+mo+'월':'')+'.xlsx');
 }
 
 // ── 초기화 ───────────────────────────────────────────────────────
